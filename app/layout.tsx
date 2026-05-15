@@ -11,13 +11,9 @@ export const metadata: Metadata = {
     statusBarStyle: "black-translucent",
     title: "Family",
   },
-  icons: {
-    icon: [
-      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
-      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
-    ],
-    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
-  },
+  // Icons are auto-wired by Next.js from app/icon.tsx (favicon) and
+  // app/apple-icon.tsx (iOS home screen). PWA manifest icons live in
+  // app/manifest.ts. No explicit URLs needed here.
 };
 
 export const viewport: Viewport = {
