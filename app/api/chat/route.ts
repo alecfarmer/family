@@ -6,6 +6,7 @@ import {
   type UIMessage,
   type TextUIPart,
 } from "ai";
+import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
 import { buildChatContext, renderSystemPrompt } from "@/lib/chatContext";
 import { logAccess } from "@/lib/accessLog";
@@ -45,7 +46,10 @@ export async function POST(req: Request) {
   const modelMessages = await convertToModelMessages(uiMessages);
 
   const result = streamText({
-    model: "anthropic/claude-sonnet-4-6",
+    // Calls Anthropic directly via @ai-sdk/anthropic + ANTHROPIC_API_KEY.
+    // (We bypass Vercel AI Gateway because this project's Gateway integration
+    // isn't bound to a provider key.)
+    model: anthropic("claude-sonnet-4-6"),
     system: renderSystemPrompt(ctx),
     messages: modelMessages,
     stopWhen: stepCountIs(3),

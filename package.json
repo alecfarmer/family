@@ -12,6 +12,7 @@
     "icons:generate": "node scripts/generate-icons.mjs"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.77",
     "@ai-sdk/react": "^3.0.184",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.105.4",
