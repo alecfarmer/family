@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { requireAdmin } from "@/lib/auth";
 import { AppHeader } from "@/components/nav/AppHeader";
 import { AdminNav } from "@/components/admin/AdminNav";
+import { SessionKeepAlive } from "@/components/auth/SessionKeepAlive";
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
   const { profile } = await requireAdmin();
@@ -21,6 +22,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
       >
         {children}
       </main>
+      <SessionKeepAlive />
     </div>
   );
 }

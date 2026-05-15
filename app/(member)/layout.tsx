@@ -6,6 +6,7 @@ import { NotificationsBell } from "@/components/notifications/NotificationsBell"
 import { PermissionPromptGate } from "@/components/notifications/PermissionPromptGate";
 import { CopyToastProvider } from "@/components/notifications/CopyToastProvider";
 import { HouseholdSwitcher } from "@/components/nav/HouseholdSwitcher";
+import { SessionKeepAlive } from "@/components/auth/SessionKeepAlive";
 import { getActiveHouseholdScope } from "@/lib/activeHousehold";
 import { getUserHouseholds } from "@/lib/household";
 
@@ -45,6 +46,7 @@ export default async function MemberLayout({
         <BottomNav />
 
         <PermissionPromptGate />
+        <SessionKeepAlive />
       </div>
     </CopyToastProvider>
   );
