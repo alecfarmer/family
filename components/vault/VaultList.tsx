@@ -6,6 +6,7 @@ import { CategoryPills } from "./CategoryPills";
 import { CredentialRow, type CredentialRowData } from "./CredentialRow";
 import {
   CredentialForm,
+  type CredentialBillingInitial,
   type CredentialInitial,
   type HouseholdOption,
 } from "@/components/admin/CredentialForm";
@@ -16,6 +17,8 @@ export type VaultCredential = CredentialRowData & {
   household_name: string | null;
   url: string | null;
   notes: string | null;
+  /** Admin-only — undefined for non-admin viewers (server strips). */
+  billing?: CredentialBillingInitial | null;
 };
 
 type VaultListProps = {
@@ -29,6 +32,8 @@ type VaultListProps = {
   scopedHousehold?: { id: string; name: string } | null;
   /** True when the user belongs to ≥2 households (drives chip display). */
   multiHousehold?: boolean;
+  /** True when the viewer can edit billing — app admin OR household admin. */
+  canManageBilling?: boolean;
 };
 
 export function VaultList({
@@ -38,6 +43,7 @@ export function VaultList({
   households = [],
   scopedHousehold = null,
   multiHousehold = false,
+  canManageBilling = false,
 }: VaultListProps) {
   const router = useRouter();
   const [selected, setSelected] = useState("All");
@@ -45,7 +51,12 @@ export function VaultList({
   const [sheet, setSheet] = useState<
     | { open: false }
     | { open: true; mode: "create" }
-    | { open: true; mode: "edit"; initial: CredentialInitial }
+    | {
+        open: true;
+        mode: "edit";
+        initial: CredentialInitial;
+        billing: CredentialBillingInitial | null;
+      }
   >({ open: false });
 
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -72,6 +83,7 @@ export function VaultList({
         notes: c.notes,
         is_shared: c.is_shared,
       },
+      billing: c.billing ?? null,
     });
   }
   function closeSheet() {
@@ -209,6 +221,10 @@ export function VaultList({
           open
           mode={sheet.mode}
           initial={sheet.mode === "edit" ? sheet.initial : null}
+          initialBilling={
+            sheet.mode === "edit" ? sheet.billing : null
+          }
+          canManageBilling={canManageBilling}
           households={households}
           onClose={closeSheet}
         />

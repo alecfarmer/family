@@ -1,59 +1,96 @@
 import { requireUser } from "@/lib/auth";
 import { getActiveHouseholdScope } from "@/lib/activeHousehold";
 import { getAllHouseholds, getUserHouseholds } from "@/lib/household";
+import { canManageBilling, lockUrgency } from "@/lib/billing";
 import { SearchBar } from "@/components/vault/SearchBar";
 import { VaultList, type VaultCredential } from "@/components/vault/VaultList";
+
+function fmtDate(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
 
 export default async function VaultPage() {
   const { profile, sb } = await requireUser();
   const isAdmin = profile.role === "admin";
 
-  // All page-level fetches in parallel. cache()-wrapped helpers share the
-  // membership query with the layout, so no duplicate DB roundtrip.
-  const [credsRes, households, scope] = await Promise.all([
-    sb
-      .from("credentials")
-      .select(
-        "id, household_id, category, service_name, username, url, notes, is_shared",
-      )
-      .order("service_name"),
-    isAdmin ? getAllHouseholds() : getUserHouseholds(profile.id),
-    getActiveHouseholdScope(),
-  ]);
+  // All in parallel. RLS will block credential_billing rows the viewer can't
+  // see, so the join is safe to issue for everyone — admins get the billing
+  // data, members get null for the join.
+  const [credsRes, billingRes, households, scope, billingAllowed] =
+    await Promise.all([
+      sb
+        .from("credentials")
+        .select(
+          "id, household_id, category, service_name, username, url, notes, is_shared",
+        )
+        .order("service_name"),
+      sb
+        .from("credential_billing")
+        .select(
+          "credential_id, monthly_cost, price_locked_until, last_negotiated_at, notes",
+        ),
+      isAdmin ? getAllHouseholds() : getUserHouseholds(profile.id),
+      getActiveHouseholdScope(),
+      canManageBilling(),
+    ]);
+
+  const billingByCredId = new Map(
+    (billingRes.data ?? []).map((b) => [b.credential_id, b] as const),
+  );
   const householdNameById = new Map(households.map((h) => [h.id, h.name]));
 
-  const allCreds: VaultCredential[] = (credsRes.data ?? []).map((c) => ({
-    id: c.id,
-    service_name: c.service_name,
-    username: c.username,
-    is_shared: c.is_shared,
-    category: c.category,
-    household_id: c.household_id,
-    household_name: c.household_id
-      ? (householdNameById.get(c.household_id) ?? null)
-      : null,
-    url: c.url,
-    notes: c.notes,
-  }));
+  const allCreds: VaultCredential[] = (credsRes.data ?? []).map((c) => {
+    const billing = billingByCredId.get(c.id) ?? null;
+    const urgency = billing
+      ? lockUrgency(billing.price_locked_until)
+      : null;
 
-  // Apply the global household scope. "All" = no filter. Specific household
-  // = that household's creds PLUS globally shared creds (e.g. Netflix), so
-  // the family-wide essentials still surface when scoped.
+    return {
+      id: c.id,
+      service_name: c.service_name,
+      username: c.username,
+      is_shared: c.is_shared,
+      category: c.category,
+      household_id: c.household_id,
+      household_name: c.household_id
+        ? (householdNameById.get(c.household_id) ?? null)
+        : null,
+      url: c.url,
+      notes: c.notes,
+      // Only ship billing to admins. Members see undefined.
+      billing: billingAllowed
+        ? billing
+          ? {
+              monthly_cost: billing.monthly_cost,
+              price_locked_until: billing.price_locked_until,
+              last_negotiated_at: billing.last_negotiated_at,
+              notes: billing.notes,
+            }
+          : null
+        : undefined,
+      // Render the chip only when the viewer can see billing AND the
+      // urgency is "expired" or "soon" — anything further out is hidden.
+      renegotiationChip:
+        billingAllowed && billing && (urgency === "expired" || urgency === "soon")
+          ? urgency === "expired"
+            ? { urgency: "expired", label: "Renegotiate now" }
+            : {
+                urgency: "soon",
+                label: `Renegotiate by ${fmtDate(billing.price_locked_until!)}`,
+              }
+          : null,
+    };
+  });
+
   const creds =
     scope.kind === "all"
       ? allCreds
-      : allCreds.filter(
-          (c) => c.household_id === scope.id || c.is_shared,
-        );
+      : allCreds.filter((c) => c.household_id === scope.id || c.is_shared);
 
   const total = creds.length;
   const shared = creds.filter((c) => c.is_shared).length;
   const categories = Array.from(new Set(creds.map((c) => c.category))).sort();
-
-  // Show the household chip on rows when:
-  // - user is in 2+ households (multi-household view), OR
-  // - viewing a specific household scope and the row is shared (visually
-  //   distinguishes "this household's WiFi" from "the shared Netflix").
   const multiHousehold = households.length >= 2;
 
   return (
@@ -82,6 +119,7 @@ export default async function VaultPage() {
           scope.kind === "household" ? { id: scope.id, name: scope.name } : null
         }
         multiHousehold={multiHousehold}
+        canManageBilling={billingAllowed}
       />
     </div>
   );

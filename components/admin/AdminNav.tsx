@@ -9,6 +9,10 @@ const NAV_ITEMS = [
   { label: "Households", href: "/admin/households" },
   { label: "Users", href: "/admin/users" },
   { label: "Credentials", href: "/admin/credentials" },
+  // Renegotiations lives on the member side (/renegotiations) because it's
+  // reachable by household admins too — but surface a shortcut here so app
+  // admins can jump straight to it from the admin nav.
+  { label: "Renegotiations", href: "/renegotiations" },
   { label: "Devices", href: "/admin/devices" },
   { label: "Knowledge", href: "/admin/knowledge" },
   { label: "Logs", href: "/admin/logs" },

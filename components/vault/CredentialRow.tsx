@@ -15,6 +15,15 @@ export type CredentialRowData = {
   username: string | null;
   is_shared: boolean;
   household_name?: string | null;
+  /** Pre-computed urgency for the renegotiation chip (admin-only).
+   *  - "expired" → past the lock date, render red chip "Renegotiate now"
+   *  - "soon"    → within 14 days, render amber chip "Renegotiate by …"
+   *  - other values / undefined → no chip
+   */
+  renegotiationChip?: {
+    urgency: "expired" | "soon";
+    label: string;
+  } | null;
 };
 
 export type CredentialRowAdmin = {
@@ -129,7 +138,7 @@ export function CredentialRow({
     >
       {/* Left content */}
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* Service name + shared/household chips */}
+        {/* Service name + shared/household + renegotiation chips */}
         <div className="mb-1 flex flex-wrap items-center gap-2">
           <span
             className="font-display font-semibold text-text"
@@ -143,6 +152,17 @@ export function CredentialRow({
             ) : (
               <Badge tone="neutral">{credential.household_name}</Badge>
             ))}
+          {credential.renegotiationChip && (
+            <Badge
+              tone={
+                credential.renegotiationChip.urgency === "expired"
+                  ? "danger"
+                  : "warning"
+              }
+            >
+              {credential.renegotiationChip.label}
+            </Badge>
+          )}
         </div>
 
         {/* Username */}

@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { supabaseService } from "@/lib/supabase/service";
 import { ActivityList } from "@/components/notifications/ActivityList";
 import { MarkAllReadButton } from "@/components/notifications/ActivityMarkAllRead";
+import { canManageBilling, daysUntilLockExpires } from "@/lib/billing";
 
 function formatActivityRowTime(value: string | Date): string {
   const date = typeof value === "string" ? new Date(value) : value;
@@ -41,14 +42,24 @@ export default async function ActivityPage() {
   const thirtyDaysAgo = new Date(Date.now() - 30 * 86_400_000).toISOString();
   const sevenDaysAgo = new Date(Date.now() - 7 * 86_400_000).toISOString();
   const sixtyDaysOut = new Date(Date.now() + 60 * 86_400_000).toISOString();
+  // Renegotiation window: already-overdue up to 14d back, expiring next 30d
+  const fourteenDaysAgoYMD = new Date(Date.now() - 14 * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+  const thirtyDaysOutYMD = new Date(Date.now() + 30 * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+  const billingAllowed = await canManageBilling();
 
-  // 5 parallel queries — RLS scopes each to the authenticated user's data
+  // 6 parallel queries — RLS scopes each to the authenticated user's data.
+  // The billing query is admin-gated; non-admins get an empty resolved value.
   const [
     helpRes,
     credRes,
     deviceRes,
     loginRes,
     householdRes,
+    billingRes,
   ] = await Promise.all([
     // 1. Resolved help requests (reply activity)
     sb
@@ -95,6 +106,23 @@ export default async function ActivityPage() {
       .gte("created_at", sevenDaysAgo)
       .order("created_at", { ascending: false })
       .limit(5),
+
+    // 6. Billing renegotiation reminders. RLS keeps non-admin members
+    //    locked out of credential_billing entirely; even if we skipped the
+    //    JS gate, they'd get an empty result. We still skip when we know
+    //    they can't see anything to save the roundtrip.
+    billingAllowed
+      ? sb
+          .from("credential_billing")
+          .select(
+            "credential_id, price_locked_until, credentials!inner(service_name)",
+          )
+          .not("price_locked_until", "is", null)
+          .gte("price_locked_until", fourteenDaysAgoYMD)
+          .lte("price_locked_until", thirtyDaysOutYMD)
+          .order("price_locked_until", { ascending: true })
+          .limit(10)
+      : Promise.resolve({ data: [] }),
   ]);
 
   // Update last_seen_activity via service role to bypass RLS
@@ -192,6 +220,46 @@ export default async function ActivityPage() {
       time: formatActivityRowTime(createdAt),
       unread: createdAt > lastSeen,
       createdAt,
+    });
+  }
+
+  // Billing renegotiation reminders — admin-only. Renders as a warning row
+  // with the service name and a "call by …" / "X days overdue" subtitle.
+  type BillingRow = {
+    credential_id: string;
+    price_locked_until: string;
+    credentials:
+      | { service_name: string }
+      | { service_name: string }[]
+      | null;
+  };
+  for (const r of (billingRes.data as BillingRow[] | null) ?? []) {
+    const cred = Array.isArray(r.credentials)
+      ? r.credentials[0]
+      : r.credentials;
+    if (!cred) continue;
+    const daysLeft = daysUntilLockExpires(r.price_locked_until);
+    if (daysLeft === null) continue;
+    const body =
+      daysLeft < 0
+        ? `${cred.service_name} locked price ended ${-daysLeft} day${
+            daysLeft === -1 ? "" : "s"
+          } ago. Time to call.`
+        : daysLeft === 0
+          ? `${cred.service_name} locked price ends today. Call to renegotiate.`
+          : `${cred.service_name} locked price ends in ${daysLeft} day${
+              daysLeft === 1 ? "" : "s"
+            }. Renegotiate now to avoid the bump.`;
+    rawItems.push({
+      id: makeId("billing", r.credential_id),
+      kind: "warning" as ActivityKind,
+      tone: "warning" as ActivityTone,
+      title: "Time to renegotiate",
+      body,
+      meta: "Billing",
+      time: daysLeft < 0 ? "overdue" : `${daysLeft}d`,
+      unread: false, // billing reminders are persistent, not unread-driven
+      createdAt: new Date(),
     });
   }
 

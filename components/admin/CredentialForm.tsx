@@ -35,11 +35,22 @@ export type CredentialInitial = {
   is_shared: boolean;
 };
 
+export type CredentialBillingInitial = {
+  monthly_cost: number | null;
+  price_locked_until: string | null;
+  last_negotiated_at: string | null;
+  notes: string | null;
+};
+
 type CredentialFormProps = {
   open: boolean;
   mode: "create" | "edit";
   initial?: CredentialInitial | null;
   households: HouseholdOption[];
+  /** When true, render the admin-only "Billing & Negotiation" section. */
+  canManageBilling?: boolean;
+  /** Existing billing row for the credential being edited. null = none yet. */
+  initialBilling?: CredentialBillingInitial | null;
   onClose: () => void;
 };
 
@@ -65,9 +76,17 @@ type FormState = {
   url: string;
   notes: string;
   shareWithHousehold: boolean;
+  // Billing — admin-only. Strings so empty input is "no value"; parsed on save.
+  billing_monthly_cost: string;
+  billing_price_locked_until: string;
+  billing_last_negotiated_at: string;
+  billing_notes: string;
 };
 
-function initialState(initial: CredentialInitial | null | undefined): FormState {
+function initialState(
+  initial: CredentialInitial | null | undefined,
+  billing: CredentialBillingInitial | null | undefined,
+): FormState {
   if (!initial) {
     return {
       service_name: "",
@@ -78,6 +97,10 @@ function initialState(initial: CredentialInitial | null | undefined): FormState 
       url: "",
       notes: "",
       shareWithHousehold: true,
+      billing_monthly_cost: "",
+      billing_price_locked_until: "",
+      billing_last_negotiated_at: "",
+      billing_notes: "",
     };
   }
   return {
@@ -89,6 +112,11 @@ function initialState(initial: CredentialInitial | null | undefined): FormState 
     url: initial.url ?? "",
     notes: initial.notes ?? "",
     shareWithHousehold: initial.is_shared,
+    billing_monthly_cost:
+      billing?.monthly_cost != null ? String(billing.monthly_cost) : "",
+    billing_price_locked_until: billing?.price_locked_until ?? "",
+    billing_last_negotiated_at: billing?.last_negotiated_at ?? "",
+    billing_notes: billing?.notes ?? "",
   };
 }
 
@@ -97,26 +125,35 @@ export function CredentialForm({
   mode,
   initial,
   households,
+  canManageBilling = false,
+  initialBilling,
   onClose,
 }: CredentialFormProps) {
   const router = useRouter();
-  const [state, setState] = useState<FormState>(() => initialState(initial));
+  const [state, setState] = useState<FormState>(() =>
+    initialState(initial, initialBilling),
+  );
   const [showPassword, setShowPassword] = useState(false);
   const [pwFocused, setPwFocused] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [billingOpen, setBillingOpen] = useState(false);
   const lastInitialIdRef = useRef<string | null>(initial?.id ?? null);
 
   // Reset state whenever the sheet opens or the edited row changes.
   useEffect(() => {
     if (!open) return;
     const incomingId = initial?.id ?? null;
-    setState(initialState(initial));
+    setState(initialState(initial, initialBilling));
     setShowPassword(false);
     setPwFocused(false);
     setError(null);
+    // Auto-expand the billing section when editing a credential that
+    // already has a billing row — admins typically open the sheet to edit
+    // billing, not the login.
+    setBillingOpen(!!initialBilling);
     lastInitialIdRef.current = incomingId;
-  }, [open, initial]);
+  }, [open, initial, initialBilling]);
 
   const householdOptions = useMemo(() => {
     const opts = [
@@ -181,11 +218,64 @@ export function CredentialForm({
       });
       if (!res.ok) {
         const json = (await res.json().catch(() => null)) as
-          | { error?: string }
+          | { error?: string; id?: string }
           | null;
         setError(json?.error ?? "Could not save credential");
         return;
       }
+
+      // ─── Billing save (admin only, edit mode for now) ─────────────────
+      // Two-stage save keeps the credential POST route simple. On create
+      // mode we don't have the new credential id back yet — billing waits
+      // until the next edit. That keeps the common "Alec just adds a
+      // login" path one round-trip.
+      if (canManageBilling && mode === "edit" && initial) {
+        const hasAnyBilling =
+          state.billing_monthly_cost.trim() !== "" ||
+          state.billing_price_locked_until !== "" ||
+          state.billing_last_negotiated_at !== "" ||
+          state.billing_notes.trim() !== "";
+
+        if (hasAnyBilling) {
+          const parsedCost = state.billing_monthly_cost.trim()
+            ? Number(state.billing_monthly_cost)
+            : null;
+          if (
+            parsedCost !== null &&
+            (Number.isNaN(parsedCost) || parsedCost < 0)
+          ) {
+            setError("Monthly cost must be a positive number");
+            return;
+          }
+          const billingRes = await fetch(
+            `/api/admin/credentials/${encodeURIComponent(initial.id)}/billing`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                monthly_cost: parsedCost,
+                price_locked_until: state.billing_price_locked_until || null,
+                last_negotiated_at: state.billing_last_negotiated_at || null,
+                notes: state.billing_notes.trim() || null,
+              }),
+            },
+          );
+          if (!billingRes.ok) {
+            const json = (await billingRes.json().catch(() => null)) as
+              | { error?: string }
+              | null;
+            setError(json?.error ?? "Saved login but billing failed");
+            return;
+          }
+        } else if (initialBilling) {
+          // All billing fields cleared on an existing row — clear it.
+          await fetch(
+            `/api/admin/credentials/${encodeURIComponent(initial.id)}/billing`,
+            { method: "DELETE" },
+          );
+        }
+      }
+
       router.refresh();
       onClose();
     } catch {
@@ -367,6 +457,88 @@ export function CredentialForm({
                 ariaLabel="Share with household"
               />
             </div>
+          )}
+
+          {/* Billing & Negotiation — admin-only. Hidden in create mode
+              because we need the new credential's id before we can write a
+              billing row; users edit the credential after creation. */}
+          {canManageBilling && mode === "edit" && (
+            <details
+              open={billingOpen}
+              onToggle={(e) => setBillingOpen(e.currentTarget.open)}
+              className="mt-4 rounded-[12px] border border-border bg-bg"
+            >
+              <summary
+                className="flex cursor-pointer list-none items-center justify-between px-3.5 py-3 [&::-webkit-details-marker]:hidden"
+              >
+                <div>
+                  <div className="font-sans text-[14px] font-medium text-text">
+                    Billing &amp; Negotiation
+                  </div>
+                  <div className="mt-0.5 font-sans text-[12px] text-text-2">
+                    Admin-only — members never see these fields.
+                  </div>
+                </div>
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  className={cn(
+                    "text-text-3 transition-transform",
+                    billingOpen && "rotate-180",
+                  )}
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M4 6l4 4 4-4"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </summary>
+
+              <div className="border-t border-border px-3.5 pb-3.5 pt-3">
+                <FormField
+                  name="billing_monthly_cost"
+                  label="Monthly cost ($)"
+                  value={state.billing_monthly_cost}
+                  onChange={(v) => set("billing_monthly_cost", v)}
+                  placeholder="79.99"
+                  mono
+                  type="number"
+                />
+
+                <FormField
+                  name="billing_price_locked_until"
+                  label="Price locked through"
+                  value={state.billing_price_locked_until}
+                  onChange={(v) => set("billing_price_locked_until", v)}
+                  type="date"
+                  small
+                />
+
+                <FormField
+                  name="billing_last_negotiated_at"
+                  label="Last negotiated"
+                  value={state.billing_last_negotiated_at}
+                  onChange={(v) => set("billing_last_negotiated_at", v)}
+                  type="date"
+                  small
+                />
+
+                <FormField
+                  name="billing_notes"
+                  label="Negotiation notes"
+                  multiline
+                  value={state.billing_notes}
+                  onChange={(v) => set("billing_notes", v)}
+                  placeholder='e.g. "Spoke to retention. Mentioned Frontier $55 offer. Got back to $79."'
+                />
+              </div>
+            </details>
           )}
 
           {error && (

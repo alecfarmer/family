@@ -16,7 +16,7 @@ type CommonProps = {
   placeholder?: string;
   required?: boolean;
   disabled?: boolean;
-  type?: "text" | "password" | "email" | "url";
+  type?: "text" | "password" | "email" | "url" | "number" | "date";
 };
 
 type TextProps = CommonProps & {

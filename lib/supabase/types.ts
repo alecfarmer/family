@@ -339,6 +339,43 @@ export type Database = {
           },
         ];
       };
+      credential_billing: {
+        Row: {
+          credential_id: string;
+          monthly_cost: number | null;
+          price_locked_until: string | null;
+          last_negotiated_at: string | null;
+          notes: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          credential_id: string;
+          monthly_cost?: number | null;
+          price_locked_until?: string | null;
+          last_negotiated_at?: string | null;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          credential_id?: string;
+          monthly_cost?: number | null;
+          price_locked_until?: string | null;
+          last_negotiated_at?: string | null;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "credential_billing_credential_id_fkey";
+            columns: ["credential_id"];
+            referencedRelation: "credentials";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       push_subscriptions: {
         Row: {
           id: string;
@@ -408,6 +445,10 @@ export type Database = {
       set_updated_at: {
         Args: Record<PropertyKey, never>;
         Returns: unknown;
+      };
+      can_admin_credential_billing: {
+        Args: { bill_credential_id: string };
+        Returns: boolean;
       };
     };
     CompositeTypes: { [_ in never]: never };

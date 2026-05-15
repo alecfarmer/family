@@ -4,6 +4,16 @@ import type { VercelConfig } from "@vercel/config/v1";
 
 const config: VercelConfig = {
   framework: "nextjs",
+  // Daily renegotiation reminder sweep. Vercel runs the cron in UTC —
+  // 13:00 UTC = 8 AM Eastern (the time admins are most likely sitting at
+  // their phone). The endpoint validates Bearer CRON_SECRET before doing
+  // anything visible to the user.
+  crons: [
+    {
+      path: "/api/cron/renegotiation-check",
+      schedule: "0 13 * * *",
+    },
+  ],
   headers: [
     {
       source: "/(.*)",
