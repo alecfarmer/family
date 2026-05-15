@@ -29,10 +29,9 @@ export function EscalationCard({
         </span>
       </div>
 
-      {/* Body */}
+      {/* Body — interpolate via template literal so JSX whitespace can't drop the spaces around {adminName}. */}
       <p className="mb-3 text-[14px] leading-[1.45] text-text">
-        I&apos;ve sent this to {adminName} along with our conversation so he has
-        the full context. He&apos;ll reach out to you directly.
+        {`I've sent this to ${adminName} along with our conversation so he has the full context. He'll reach out to you directly.`}
       </p>
 
       {/* Footer — confirmed state */}
@@ -54,7 +53,7 @@ export function EscalationCard({
           />
         </svg>
         <span className="text-[11px] text-accent opacity-60">
-          {adminName} has been notified
+          {`${adminName} has been notified`}
         </span>
       </div>
     </div>

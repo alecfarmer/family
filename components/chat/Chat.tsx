@@ -16,12 +16,20 @@ function formatTime(date: Date): string {
 }
 
 function getTextFromParts(message: UIMessage): string {
+  // When the model interleaves text and tool calls, it produces multiple text
+  // parts in a single message. Joining with "" lost the sentence break between
+  // them — "Alec!" + "Your" → "Alec!Your". Join with a space and collapse any
+  // accidental doubles so the bubble reads naturally.
   return message.parts
     .filter((p): p is Extract<UIMessage["parts"][number], { type: "text" }> =>
       p.type === "text",
     )
     .map((p) => p.text)
-    .join("");
+    .join(" ")
+    // Reflow: collapse multi-spaces and don't leave a space before punctuation.
+    .replace(/\s+([.,!?;:])/g, "$1")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 // ── component ─────────────────────────────────────────────────────────────────
