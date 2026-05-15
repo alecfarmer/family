@@ -1,3 +1,5 @@
+"use client";
+
 import { z } from "zod";
 import { Badge } from "@/components/ui/Badge";
 import { AssistantBubble, UserBubble } from "@/components/chat/MessageBubble";
