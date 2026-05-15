@@ -2,6 +2,15 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { Badge } from "@/components/ui/Badge";
+import { supabaseService } from "@/lib/supabase/service";
+import { AttachmentSection } from "@/components/devices/AttachmentSection";
+import {
+  DEVICE_ATTACHMENTS_BUCKET,
+  SIGNED_URL_TTL_SECONDS,
+  canManageDeviceAttachments,
+  type DeviceAttachmentListItem,
+  type DeviceAttachmentRow,
+} from "@/lib/deviceAttachments";
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -33,6 +42,38 @@ export default async function DeviceDetailPage({ params }: Props) {
     .maybeSingle();
 
   if (!device) notFound();
+
+  // Server-fetch attachments + generate signed URLs here so the client
+  // component receives ready-to-render data on first paint. RLS on
+  // device_attachments filters to rows the current user can see.
+  const { data: attachmentData } = await sb
+    .from("device_attachments" as never)
+    .select(
+      "id, device_id, storage_path, file_name, mime_type, size_bytes, uploaded_by, created_at",
+    )
+    .eq("device_id", id)
+    .order("created_at", { ascending: false });
+
+  const attachmentRows = (attachmentData ?? []) as unknown as DeviceAttachmentRow[];
+  const signed = await Promise.all(
+    attachmentRows.map((row) =>
+      supabaseService.storage
+        .from(DEVICE_ATTACHMENTS_BUCKET)
+        .createSignedUrl(row.storage_path, SIGNED_URL_TTL_SECONDS),
+    ),
+  );
+  const initialAttachments: DeviceAttachmentListItem[] = attachmentRows.map(
+    (row, idx) => ({
+      id: row.id,
+      file_name: row.file_name,
+      mime_type: row.mime_type,
+      size_bytes: row.size_bytes,
+      created_at: row.created_at,
+      url: signed[idx]?.data?.signedUrl ?? "",
+    }),
+  );
+
+  const { allowed: canManageAttachments } = await canManageDeviceAttachments(id);
 
   const today = new Date();
   const expiry = device.warranty_expiry ? new Date(device.warranty_expiry) : null;
@@ -119,6 +160,12 @@ export default async function DeviceDetailPage({ params }: Props) {
           <CredRow label="Warranty Expiry" value={warrantyExpiryLabel} />
           <CredRow label="Notes" value={device.notes} />
         </div>
+
+        <AttachmentSection
+          deviceId={id}
+          initialAttachments={initialAttachments}
+          canManage={canManageAttachments}
+        />
       </div>
     </div>
   );
