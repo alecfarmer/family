@@ -14,6 +14,7 @@ const schema = z.object({
   VAPID_EMAIL: z.string().email(),
   AI_GATEWAY_API_KEY: z.string().optional(),
   ADMIN_DISPLAY_NAME: z.string().default("Alec"),
+  NEXT_PUBLIC_VAPID_PUBLIC_KEY: z.string().optional(),
 });
 
 type Env = z.infer<typeof schema>;
@@ -33,6 +34,7 @@ function read(): Env {
     VAPID_EMAIL: process.env.VAPID_EMAIL,
     AI_GATEWAY_API_KEY: process.env.AI_GATEWAY_API_KEY,
     ADMIN_DISPLAY_NAME: process.env.ADMIN_DISPLAY_NAME,
+    NEXT_PUBLIC_VAPID_PUBLIC_KEY: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
   });
   return cached;
 }

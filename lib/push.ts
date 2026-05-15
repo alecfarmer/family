@@ -3,11 +3,16 @@ import webpush, { type WebPushError } from "web-push";
 import { env } from "@/lib/env";
 import { supabaseService } from "@/lib/supabase/service";
 
-webpush.setVapidDetails(
-  `mailto:${env.VAPID_EMAIL}`,
-  env.VAPID_PUBLIC_KEY,
-  env.VAPID_PRIVATE_KEY,
-);
+let vapidConfigured = false;
+function configureVapid(): void {
+  if (vapidConfigured) return;
+  webpush.setVapidDetails(
+    `mailto:${env.VAPID_EMAIL}`,
+    env.VAPID_PUBLIC_KEY,
+    env.VAPID_PRIVATE_KEY,
+  );
+  vapidConfigured = true;
+}
 
 interface PushPayload {
   title: string;
@@ -16,6 +21,7 @@ interface PushPayload {
 }
 
 export async function notifyAdmins(payload: PushPayload): Promise<void> {
+  configureVapid();
   // Two-query approach — robust against missing generated FK join types.
   const { data: admins } = await supabaseService
     .from("users")
