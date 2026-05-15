@@ -1,12 +1,8 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState } from "react";
-import {
-  initialLoginState,
-  requestOtp,
-  verifyOtp,
-  type LoginState,
-} from "./actions";
+import { requestOtp, verifyOtp } from "./actions";
+import { initialLoginState, type LoginState } from "./types";
 import { cn } from "@/components/ui/cn";
 
 const cardStyle = {

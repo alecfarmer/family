@@ -3,20 +3,10 @@
 import { z } from "zod";
 import { redirect } from "next/navigation";
 import { createSupabaseServer } from "@/lib/supabase/server";
+import type { LoginState } from "./types";
 
 const emailSchema = z.string().email("Please enter a valid email address.");
-const codeSchema = z
-  .string()
-  .regex(/^\d{6}$/, "Codes are 6 digits.");
-
-export type LoginState = {
-  step: "email" | "code";
-  email?: string;
-  error?: string;
-  sentAt?: number; // epoch ms — lets the client show a "resend in Ns" countdown
-};
-
-export const initialLoginState: LoginState = { step: "email" };
+const codeSchema = z.string().regex(/^\d{6}$/, "Codes are 6 digits.");
 
 /** Step 1 — email submitted, request OTP. */
 export async function requestOtp(
@@ -38,7 +28,6 @@ export async function requestOtp(
   });
 
   if (error) {
-    // Map known errors to user-readable messages.
     const msg = error.message.toLowerCase();
     if (msg.includes("rate") || msg.includes("too many")) {
       return {
@@ -99,13 +88,8 @@ export async function verifyOtp(
     };
   }
 
-  // Cookies are set by the Supabase client on the Server Action response.
-  // Next.js attaches them to the redirect — the (member) layout will read
-  // the session and serve the chat home.
+  // Cookies set by the Supabase client are attached to the action's response.
+  // Next.js carries them through to the redirect — the (member) layout will
+  // read the session and serve the chat home.
   redirect("/");
-}
-
-/** Step back — user wants to use a different email. */
-export async function resetToEmail(): Promise<LoginState> {
-  return { step: "email" };
 }
