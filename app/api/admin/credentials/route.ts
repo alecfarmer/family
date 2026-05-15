@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
 import { encryptPassword } from "@/lib/crypto";
 import { logAccess } from "@/lib/accessLog";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 const categoryEnum = z.enum([
   "internet",
@@ -23,6 +24,9 @@ const createSchema = z.object({
   url: z.string().max(500).nullable().optional(),
   notes: z.string().max(4000).nullable().optional(),
   is_shared: z.boolean(),
+  // Admin-only private memory; stored in a separate table that the AI
+  // chat context loader does NOT read. Optional — omitted on plain logins.
+  admin_notes: z.string().max(4000).optional(),
 });
 
 const updateSchema = z.object({
@@ -35,14 +39,50 @@ const updateSchema = z.object({
   url: z.string().max(500).nullable().optional(),
   notes: z.string().max(4000).nullable().optional(),
   is_shared: z.boolean(),
+  admin_notes: z.string().max(4000).optional(),
 });
+
+/**
+ * Upsert (or clear) the admin-only private notes row for a credential.
+ * Mirrors how the billing route handles an "empty means clear" textarea:
+ * empty string deletes the row, anything else writes/replaces it.
+ *
+ * Falls through silently on errors — these notes are best-effort metadata
+ * and shouldn't block a successful credential save. The DB-side RLS gate
+ * (`can_admin_credential_billing`) still applies on the upsert/delete.
+ */
+async function saveAdminNotes(
+  sb: SupabaseClient,
+  credentialId: string,
+  userId: string,
+  raw: string,
+): Promise<void> {
+  const value = raw.trim();
+  if (value === "") {
+    await sb
+      .from("credential_admin_notes")
+      .delete()
+      .eq("credential_id", credentialId);
+    return;
+  }
+  await sb.from("credential_admin_notes").upsert(
+    {
+      credential_id: credentialId,
+      notes: value,
+      updated_by: userId,
+      // Force the trigger to bump updated_at on upsert-as-update.
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "credential_id" },
+  );
+}
 
 function badRequest(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
 }
 
 export async function POST(req: Request) {
-  const { sb } = await requireAdmin();
+  const { sb, profile } = await requireAdmin();
 
   const json = await req.json().catch(() => null);
   const parsed = createSchema.safeParse(json);
@@ -83,6 +123,12 @@ export async function POST(req: Request) {
     );
   }
 
+  // Admin-only private notes — only when the client explicitly sent the field
+  // (undefined means "don't touch", per billing's convention).
+  if (data.admin_notes !== undefined) {
+    await saveAdminNotes(sb, row.id, profile.id, data.admin_notes);
+  }
+
   await logAccess({
     action: "admin_credential_add",
     resourceId: row.id,
@@ -94,7 +140,7 @@ export async function POST(req: Request) {
 }
 
 export async function PUT(req: Request) {
-  const { sb } = await requireAdmin();
+  const { sb, profile } = await requireAdmin();
 
   const url = new URL(req.url);
   const id = url.searchParams.get("id");
@@ -150,6 +196,10 @@ export async function PUT(req: Request) {
       { error: "update_failed", detail: error?.message ?? "not found" },
       { status: 500 },
     );
+  }
+
+  if (data.admin_notes !== undefined) {
+    await saveAdminNotes(sb, row.id, profile.id, data.admin_notes);
   }
 
   await logAccess({

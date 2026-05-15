@@ -51,6 +51,12 @@ type CredentialFormProps = {
   canManageBilling?: boolean;
   /** Existing billing row for the credential being edited. null = none yet. */
   initialBilling?: CredentialBillingInitial | null;
+  /**
+   * Existing admin-only private notes for this credential. null = no row yet
+   * (or viewer can't read them). Only respected when `canManageBilling` is
+   * true — non-admins never see the textarea.
+   */
+  initialAdminNotes?: string | null;
   onClose: () => void;
 };
 
@@ -81,11 +87,14 @@ type FormState = {
   billing_price_locked_until: string;
   billing_last_negotiated_at: string;
   billing_notes: string;
+  // Admin-only private memory — never seen by the AI chat assistant.
+  admin_notes: string;
 };
 
 function initialState(
   initial: CredentialInitial | null | undefined,
   billing: CredentialBillingInitial | null | undefined,
+  adminNotes: string | null | undefined,
 ): FormState {
   if (!initial) {
     return {
@@ -101,6 +110,7 @@ function initialState(
       billing_price_locked_until: "",
       billing_last_negotiated_at: "",
       billing_notes: "",
+      admin_notes: "",
     };
   }
   return {
@@ -117,6 +127,7 @@ function initialState(
     billing_price_locked_until: billing?.price_locked_until ?? "",
     billing_last_negotiated_at: billing?.last_negotiated_at ?? "",
     billing_notes: billing?.notes ?? "",
+    admin_notes: adminNotes ?? "",
   };
 }
 
@@ -127,11 +138,12 @@ export function CredentialForm({
   households,
   canManageBilling = false,
   initialBilling,
+  initialAdminNotes,
   onClose,
 }: CredentialFormProps) {
   const router = useRouter();
   const [state, setState] = useState<FormState>(() =>
-    initialState(initial, initialBilling),
+    initialState(initial, initialBilling, initialAdminNotes),
   );
   const [showPassword, setShowPassword] = useState(false);
   const [pwFocused, setPwFocused] = useState(false);
@@ -144,7 +156,7 @@ export function CredentialForm({
   useEffect(() => {
     if (!open) return;
     const incomingId = initial?.id ?? null;
-    setState(initialState(initial, initialBilling));
+    setState(initialState(initial, initialBilling, initialAdminNotes));
     setShowPassword(false);
     setPwFocused(false);
     setError(null);
@@ -153,7 +165,7 @@ export function CredentialForm({
     // billing, not the login.
     setBillingOpen(!!initialBilling);
     lastInitialIdRef.current = incomingId;
-  }, [open, initial, initialBilling]);
+  }, [open, initial, initialBilling, initialAdminNotes]);
 
   const householdOptions = useMemo(() => {
     const opts = [
@@ -201,6 +213,9 @@ export function CredentialForm({
       notes: state.notes.trim() || null,
       is_shared,
       ...(password_plaintext ? { password_plaintext } : {}),
+      // Admin-only private memory. Only sent when the viewer can manage
+      // billing; the API also gates this server-side.
+      ...(canManageBilling ? { admin_notes: state.admin_notes } : {}),
     };
 
     setSaving(true);
@@ -434,6 +449,28 @@ export function CredentialForm({
             onChange={(v) => set("notes", v)}
             placeholder="Any extra detail…"
           />
+
+          {/* Admin-only private memory. Visually mirrors the regular Notes
+              field via FormField, then a caption underneath makes the
+              audience explicit. */}
+          {canManageBilling && (
+            <div>
+              <FormField
+                name="admin_notes"
+                label="Admin notes"
+                multiline
+                value={state.admin_notes}
+                onChange={(v) => set("admin_notes", v)}
+                placeholder='e.g. "Comcast rep was rude last time, ask for retention."'
+              />
+              <p
+                className="-mt-2 mb-3.5 font-sans text-text-3"
+                style={{ fontSize: 11 }}
+              >
+                Private — never shared with the chat assistant.
+              </p>
+            </div>
+          )}
 
           {/* Share with household — only when a specific household is selected */}
           {!isSharedAll && (

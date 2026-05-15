@@ -14,11 +14,14 @@ import {
 type CredentialsListClientProps = {
   credentials: AdminCredentialRowData[];
   households: HouseholdOption[];
+  /** Map of credential.id → existing admin-only private notes string. */
+  adminNotesByCredId?: Record<string, string>;
 };
 
 export function CredentialsListClient({
   credentials,
   households,
+  adminNotesByCredId = {},
 }: CredentialsListClientProps) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"create" | "edit">("create");
@@ -80,6 +83,14 @@ export function CredentialsListClient({
         mode={mode}
         initial={initial}
         households={households}
+        // The admin credentials page is app-admin only, so the form's
+        // admin-only sections (billing, admin notes) should always render.
+        canManageBilling
+        initialAdminNotes={
+          mode === "edit" && initial
+            ? (adminNotesByCredId[initial.id] ?? null)
+            : null
+        }
         onClose={() => setOpen(false)}
       />
     </div>

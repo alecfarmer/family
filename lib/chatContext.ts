@@ -69,6 +69,9 @@ export async function buildChatContext(): Promise<ChatContext> {
   // Credentials: rows belonging to one of the user's households OR globally shared.
   // PostgREST `.or()` with `.in.()` requires a non-empty list; when the user has
   // no households we fall back to a `is_shared.eq.true` filter alone.
+  // NOTE: admin-only private memory lives in a separate `credential_admin_notes`
+  // table and is intentionally excluded from this select so it never leaks into
+  // the AI chat system prompt. Only `credentials.notes` is AI-visible.
   const credsQuery = sb.from("credentials").select("*");
   const credsRes = householdIds.length
     ? await credsQuery.or(

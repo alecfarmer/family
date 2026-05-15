@@ -10,6 +10,9 @@ function fmtDate(iso: string): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+// Local type — `credential_admin_notes` is not in lib/supabase/types.ts.
+type AdminNotesRow = { credential_id: string; notes: string };
+
 export default async function VaultPage() {
   const { profile, sb } = await requireUser();
   const isAdmin = profile.role === "admin";
@@ -34,6 +37,20 @@ export default async function VaultPage() {
       getActiveHouseholdScope(),
       canManageBilling(),
     ]);
+
+  // Admin-only private notes — only worth fetching when the viewer can see
+  // them. RLS would return an empty set anyway, but skipping the query keeps
+  // the page render lean for regular members.
+  const adminNotesRes = billingAllowed
+    ? ((await sb
+        .from("credential_admin_notes" as never)
+        .select("credential_id, notes")) as unknown as {
+        data: AdminNotesRow[] | null;
+      })
+    : { data: null };
+  const adminNotesByCredId = new Map<string, string>(
+    (adminNotesRes.data ?? []).map((r) => [r.credential_id, r.notes] as const),
+  );
 
   const billingByCredId = new Map(
     (billingRes.data ?? []).map((b) => [b.credential_id, b] as const),
@@ -68,6 +85,11 @@ export default async function VaultPage() {
               notes: billing.notes,
             }
           : null
+        : undefined,
+      // Admin-only private notes — undefined for members, "" for admins
+      // with no row yet so the form starts blank without a refetch.
+      admin_notes: billingAllowed
+        ? (adminNotesByCredId.get(c.id) ?? null)
         : undefined,
       // Render the chip only when the viewer can see billing AND the
       // urgency is "expired" or "soon" — anything further out is hidden.

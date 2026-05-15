@@ -8,10 +8,15 @@ import { CredentialsListClient } from "./CredentialsListClient";
 
 export const dynamic = "force-dynamic";
 
+// Local type — `credential_admin_notes` is not in lib/supabase/types.ts.
+type AdminNotesRow = { credential_id: string; notes: string };
+
 export default async function AdminCredentialsPage() {
   const { sb } = await requireAdmin();
 
-  const [credsRes, housesRes] = await Promise.all([
+  // App admins can read every admin_notes row by RLS. Fetched in parallel so
+  // the form can be pre-populated without a second roundtrip when editing.
+  const [credsRes, housesRes, adminNotesRes] = await Promise.all([
     sb
       .from("credentials")
       .select(
@@ -19,6 +24,11 @@ export default async function AdminCredentialsPage() {
       )
       .order("service_name", { ascending: true }),
     sb.from("households").select("id, name").order("name", { ascending: true }),
+    sb
+      .from("credential_admin_notes" as never)
+      .select("credential_id, notes") as unknown as Promise<{
+      data: AdminNotesRow[] | null;
+    }>,
   ]);
 
   const credentials: AdminCredentialRowData[] = (credsRes.data ?? []).map(
@@ -38,6 +48,9 @@ export default async function AdminCredentialsPage() {
     id: h.id,
     name: h.name,
   }));
+  const adminNotesByCredId: Record<string, string> = Object.fromEntries(
+    (adminNotesRes.data ?? []).map((r) => [r.credential_id, r.notes]),
+  );
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
@@ -55,6 +68,7 @@ export default async function AdminCredentialsPage() {
       <CredentialsListClient
         credentials={credentials}
         households={households}
+        adminNotesByCredId={adminNotesByCredId}
       />
     </div>
   );

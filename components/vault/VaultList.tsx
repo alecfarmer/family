@@ -19,6 +19,11 @@ export type VaultCredential = CredentialRowData & {
   notes: string | null;
   /** Admin-only — undefined for non-admin viewers (server strips). */
   billing?: CredentialBillingInitial | null;
+  /**
+   * Admin-only private notes for this credential. undefined when the viewer
+   * can't manage billing; null when they can but no row exists yet.
+   */
+  admin_notes?: string | null;
 };
 
 type VaultListProps = {
@@ -56,6 +61,7 @@ export function VaultList({
         mode: "edit";
         initial: CredentialInitial;
         billing: CredentialBillingInitial | null;
+        adminNotes: string | null;
       }
   >({ open: false });
 
@@ -84,6 +90,9 @@ export function VaultList({
         is_shared: c.is_shared,
       },
       billing: c.billing ?? null,
+      // null = no row yet OR the viewer can't read it. The form only renders
+      // the field when canManageBilling is true, so undefined→null is fine.
+      adminNotes: c.admin_notes ?? null,
     });
   }
   function closeSheet() {
@@ -223,6 +232,9 @@ export function VaultList({
           initial={sheet.mode === "edit" ? sheet.initial : null}
           initialBilling={
             sheet.mode === "edit" ? sheet.billing : null
+          }
+          initialAdminNotes={
+            sheet.mode === "edit" ? sheet.adminNotes : null
           }
           canManageBilling={canManageBilling}
           households={households}
