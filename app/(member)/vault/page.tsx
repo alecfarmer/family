@@ -1,23 +1,39 @@
 import { requireUser } from "@/lib/auth";
 import { SearchBar } from "@/components/vault/SearchBar";
-import { VaultList } from "@/components/vault/VaultList";
+import { VaultList, type VaultCredential } from "@/components/vault/VaultList";
 
 export default async function VaultPage() {
-  const { sb } = await requireUser();
+  const { profile, sb } = await requireUser();
+  const isAdmin = profile.role === "admin";
 
-  const { data: credentials } = await sb
+  const credsRes = await sb
     .from("credentials")
-    .select("id, household_id, category, service_name, username, url, notes, is_shared")
+    .select(
+      "id, household_id, category, service_name, username, url, notes, is_shared",
+    )
     .order("service_name");
 
-  const creds = credentials ?? [];
+  const creds: VaultCredential[] = (credsRes.data ?? []).map((c) => ({
+    id: c.id,
+    service_name: c.service_name,
+    username: c.username,
+    is_shared: c.is_shared,
+    category: c.category,
+    household_id: c.household_id,
+    url: c.url,
+    notes: c.notes,
+  }));
+
+  // Only admins ever see the household select inside the credential form.
+  // For everyone else we skip the query entirely.
+  const households = isAdmin
+    ? ((await sb.from("households").select("id, name").order("name")).data ?? [])
+    : [];
 
   const total = creds.length;
   const shared = creds.filter((c) => c.is_shared).length;
 
-  const categories = Array.from(
-    new Set(creds.map((c) => c.category as string)),
-  ).sort();
+  const categories = Array.from(new Set(creds.map((c) => c.category))).sort();
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
@@ -39,7 +55,12 @@ export default async function VaultPage() {
       </div>
 
       {/* Category pills + scrollable list (client) */}
-      <VaultList credentials={creds} categories={categories} />
+      <VaultList
+        credentials={creds}
+        categories={categories}
+        isAdmin={isAdmin}
+        households={households}
+      />
     </div>
   );
 }

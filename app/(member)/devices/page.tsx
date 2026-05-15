@@ -1,24 +1,26 @@
 import { requireUser } from "@/lib/auth";
-import { DeviceCard } from "@/components/devices/DeviceCard";
+import { DevicesGrid } from "@/components/devices/DevicesGrid";
 
 export default async function DevicesPage() {
-  const { sb } = await requireUser();
+  const { profile, sb } = await requireUser();
+  const isAdmin = profile.role === "admin";
 
-  const { data: devices } = await sb
-    .from("devices")
-    .select("*")
-    .order("name");
-
+  const { data: devices } = await sb.from("devices").select("*").order("name");
   const all = devices ?? [];
+
   const today = new Date();
   const sixtyDaysOut = new Date(today.getTime() + 60 * 86_400_000);
 
-  // "Need attention" = expired OR warranty within 60 days (warning + danger)
+  // "Need attention" = expired OR warranty within 60 days
   const needAttentionCount = all.filter((d) => {
     if (!d.warranty_expiry) return false;
     const expiry = new Date(d.warranty_expiry);
-    return expiry <= sixtyDaysOut; // includes already-expired
+    return expiry <= sixtyDaysOut;
   }).length;
+
+  const households = isAdmin
+    ? ((await sb.from("households").select("id, name").order("name")).data ?? [])
+    : [];
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
@@ -38,19 +40,9 @@ export default async function DevicesPage() {
         </p>
       </div>
 
-      {/* Grid */}
-      <div className="flex-1 overflow-auto px-4 pb-5 pt-1.5">
-        {all.length === 0 ? (
-          <div className="flex flex-1 flex-col items-center justify-center py-16 text-center">
-            <p className="font-sans text-[14px] text-text-2">No devices tracked yet.</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 gap-2.5">
-            {all.map((device) => (
-              <DeviceCard key={device.id} device={device} />
-            ))}
-          </div>
-        )}
+      {/* Grid (client wrapper handles admin add/edit/delete) */}
+      <div className="flex flex-1 flex-col overflow-auto">
+        <DevicesGrid devices={all} isAdmin={isAdmin} households={households} />
       </div>
     </div>
   );

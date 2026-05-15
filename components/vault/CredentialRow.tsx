@@ -16,13 +16,21 @@ export type CredentialRowData = {
   is_shared: boolean;
 };
 
+export type CredentialRowAdmin = {
+  onEdit: () => void;
+  onDelete: () => void;
+  deleting?: boolean;
+};
+
 type CredentialRowProps = {
   credential: CredentialRowData;
+  /** When supplied, shows admin edit + delete buttons alongside eye+copy. */
+  admin?: CredentialRowAdmin;
 };
 
 const CLEAR_AFTER_MS = 30_000;
 
-export function CredentialRow({ credential }: CredentialRowProps) {
+export function CredentialRow({ credential, admin }: CredentialRowProps) {
   const { id, service_name, username, is_shared } = credential;
   const showCopyToast = useCopyToast();
 
@@ -141,7 +149,7 @@ export function CredentialRow({ credential }: CredentialRowProps) {
         </span>
       </div>
 
-      {/* Right column — eye + copy */}
+      {/* Right column — eye + copy (always) + admin edit + delete (when admin) */}
       <div className="flex flex-col gap-2">
         <button
           onClick={handleEye}
@@ -170,6 +178,44 @@ export function CredentialRow({ credential }: CredentialRowProps) {
         >
           <CopyIcon size={15} c={iconColor} />
         </button>
+
+        {admin && (
+          <>
+            <button
+              onClick={admin.onEdit}
+              aria-label="Edit credential"
+              className="flex h-[34px] w-[34px] items-center justify-center rounded-[8px] border border-border bg-surface-elevated"
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path
+                  d="M11.5 2.5l2 2-8 8H3.5v-2l8-8z"
+                  stroke={iconColor}
+                  strokeWidth="1.3"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+            <button
+              onClick={admin.onDelete}
+              disabled={admin.deleting}
+              aria-label="Delete credential"
+              className={cn(
+                "flex h-[34px] w-[34px] items-center justify-center rounded-[8px] border border-border bg-surface-elevated",
+                admin.deleting && "opacity-50",
+              )}
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path
+                  d="M3.5 4.5h9M6 4.5V3a1 1 0 011-1h2a1 1 0 011 1v1.5M5 4.5l.5 8a1 1 0 001 1h3a1 1 0 001-1l.5-8"
+                  stroke="#C77575"
+                  strokeWidth="1.3"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
