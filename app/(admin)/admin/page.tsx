@@ -3,6 +3,7 @@ import { requireAdmin } from "@/lib/auth";
 import { supabaseService } from "@/lib/supabase/service";
 import { StatCard } from "@/components/admin/StatCard";
 import { ActivityFeed, type ActivityRow } from "@/components/admin/ActivityFeed";
+import { SpendBreakdown } from "@/components/admin/SpendBreakdown";
 
 function greeting(): string {
   const hour = new Date().getUTCHours();
@@ -15,13 +16,14 @@ export default async function AdminDashboardPage() {
   const { profile } = await requireAdmin();
   const firstName = profile.full_name.split(" ")[0] ?? profile.full_name;
 
-  // Parallel count queries
+  // Parallel count queries + billing aggregation
   const [
     { count: householdCount },
     { count: memberCount },
     { count: openRequestCount },
     { count: credentialCount },
     { data: rawLogs },
+    { data: billingRows },
   ] = await Promise.all([
     supabaseService.from("households").select("id", { count: "exact", head: true }),
     supabaseService
@@ -38,7 +40,47 @@ export default async function AdminDashboardPage() {
       .select("id, action, user_id, created_at")
       .order("created_at", { ascending: false })
       .limit(12),
+    supabaseService
+      .from("credential_billing")
+      .select("monthly_cost, credentials!inner(category)")
+      .not("monthly_cost", "is", null),
   ]);
+
+  // Aggregate billing data server-side
+  type BillingRow = {
+    monthly_cost: string | number | null;
+    credentials: { category: string } | { category: string }[];
+  };
+
+  const rows = (billingRows ?? []) as BillingRow[];
+
+  let totalMonthly = 0;
+  const categoryMap = new Map<string, { monthly: number; count: number }>();
+
+  for (const row of rows) {
+    const monthly = Number(row.monthly_cost ?? 0);
+    if (!Number.isFinite(monthly) || monthly <= 0) continue;
+    totalMonthly += monthly;
+
+    const credObj = Array.isArray(row.credentials)
+      ? row.credentials[0]
+      : row.credentials;
+    const cat = credObj?.category ?? "other";
+    const existing = categoryMap.get(cat);
+    if (existing) {
+      existing.monthly += monthly;
+      existing.count += 1;
+    } else {
+      categoryMap.set(cat, { monthly, count: 1 });
+    }
+  }
+
+  const byCategory = Array.from(categoryMap.entries())
+    .map(([category, vals]) => ({ category, ...vals }))
+    .sort((a, b) => b.monthly - a.monthly);
+
+  const trackedCount = rows.length;
+  const untrackedCount = Math.max(0, (credentialCount ?? 0) - trackedCount);
 
   // Resolve actor names for access_log rows
   const userIds = [
@@ -101,6 +143,15 @@ export default async function AdminDashboardPage() {
           />
         ))}
       </div>
+
+      {/* Spend breakdown */}
+      <SpendBreakdown
+        totalMonthly={totalMonthly}
+        byCategory={byCategory}
+        trackedCount={trackedCount}
+        untrackedCount={untrackedCount}
+        className="mb-[18px] md:max-w-[480px]"
+      />
 
       {/* Quick actions */}
       <p
