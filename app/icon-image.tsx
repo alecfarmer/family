@@ -24,9 +24,12 @@ export function IconImage({
   // expects (so the mark survives circle / squircle / rounded-square crops).
   const markRatio = maskable ? 0.5 : 0.62;
   const markPx = Math.round(size * markRatio);
-  // Stroke width scales with the rendered size so the silhouette stays
-  // recognizable at 32 px and at 512 px alike.
-  const strokeWidth = Math.max(1.5, (markPx / 32) * 1.8);
+  // Stroke width stays in the design's original viewBox units (1.8). SVG
+  // scales it proportionally with the rendered size, so the silhouette
+  // reads the same at 32 px and 512 px. Bumping it higher caused the door
+  // cut-out to fill solid at large sizes (strokes from opposite sides met
+  // in the middle, turning the icon into an amber blob).
+  const strokeWidth = 1.8;
 
   return (
     <div
