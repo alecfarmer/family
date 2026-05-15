@@ -13,12 +13,14 @@ import type { Tables } from "@/lib/supabase/types";
  * server, behind RLS.
  */
 export interface ChatContextCredential {
+  id: string;
   service: string;
   username: string | null;
   password: string;
   url: string | null;
   notes: string | null;
   category: Tables<"credentials">["category"];
+  isShared: boolean;
 }
 
 export interface ChatContext {
@@ -81,12 +83,14 @@ export async function buildChatContext(): Promise<ChatContext> {
 
   const credentials: ChatContextCredential[] = (credsRes.data ?? []).map(
     (c) => ({
+      id: c.id,
       service: c.service_name,
       username: c.username,
       password: decryptPassword(c.password_encrypted),
       url: c.url,
       notes: c.notes,
       category: c.category,
+      isShared: c.is_shared,
     }),
   );
 
@@ -109,9 +113,13 @@ export function renderSystemPrompt(ctx: ChatContext): string {
   const lines: string[] = [
     `You are Family Assistant, a warm and concise helper for ${ctx.profile.full_name}.`,
     `Speak in plain English. Avoid jargon. Keep answers under 3 short paragraphs unless asked for detail.`,
-    `Reply in plain text only — do NOT use Markdown. No asterisks for bold, no backticks for code, no >, #, or -. The chat UI renders text literally, so Markdown shows up as visible junk characters.`,
-    `When sharing a password, put it on its own line surrounded by blank lines so it's easy to read and copy. Do not wrap it in backticks.`,
-    `If you cannot answer from the data below, call the askAlec tool with a one-sentence summary of the question — do not guess. ${adminName} is the family member who manages this app and will follow up directly.`,
+    `Reply in plain text only — do NOT use Markdown. No asterisks, backticks, >, #, or hyphens for bullets. The chat UI renders text literally.`,
+    ``,
+    `## How to surface a credential`,
+    `When the user asks about a service in the Credentials list below, do NOT type out the password or username in your reply. Call the revealCredential tool with the exact service name instead — the UI will render a copy-friendly card with eye-toggle and per-field copy buttons. Your text reply should just be a short sentence like "Here's the Home WiFi info:" or "All yours:" — let the card do the rest. If the credential has useful notes, mention them naturally in plain text below the card.`,
+    ``,
+    `## When to escalate`,
+    `If the user asks about a service that is NOT in the Credentials list (and isn't covered by the Devices or Knowledge Base), call the askAlec tool with a one-sentence summary instead of guessing. ${adminName} is the family member who manages this app and will follow up directly.`,
     `Never invent credentials, device details, or instructions. Only use the facts listed below.`,
     ``,
     `## Households`,
@@ -119,13 +127,12 @@ export function renderSystemPrompt(ctx: ChatContext): string {
       ? ctx.households.map((h) => `- ${h.name}`)
       : ["- (none on file)"]),
     ``,
-    `## Credentials`,
+    `## Credentials available (call revealCredential with the exact service name)`,
     ...(ctx.credentials.length
       ? ctx.credentials.map((c) => {
-          const user = c.username ? ` (user: ${c.username})` : "";
-          const url = c.url ? ` · ${c.url}` : "";
-          const notes = c.notes ? ` · notes: ${c.notes}` : "";
-          return `- [${c.category}] ${c.service}${user}: password \`${c.password}\`${url}${notes}`;
+          const shared = c.isShared ? " (shared)" : "";
+          const notes = c.notes ? ` — notes: ${c.notes}` : "";
+          return `- ${c.service} [${c.category}]${shared}${notes}`;
         })
       : ["- (none on file)"]),
     ``,

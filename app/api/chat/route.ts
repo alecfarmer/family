@@ -54,6 +54,44 @@ export async function POST(req: Request) {
     messages: modelMessages,
     stopWhen: stepCountIs(3),
     tools: {
+      revealCredential: tool({
+        description:
+          "Surface a credential to the user as a click-to-copy card. Use this whenever the user asks for the username, password, or login info for a service that appears in the Credentials list. Do NOT also paste the username or password in your text reply — the card handles it. Returns { service, username, password, url, isShared } so the UI can render the card. If the requested service isn't in the list, the tool returns { error } and you should call askAlec instead.",
+        inputSchema: z.object({
+          service: z
+            .string()
+            .describe(
+              "The exact service_name from the Credentials list (case-insensitive match).",
+            ),
+        }),
+        execute: async ({ service }) => {
+          const needle = service.trim().toLowerCase();
+          const match = ctx.credentials.find(
+            (c) => c.service.toLowerCase() === needle,
+          );
+          if (!match) {
+            return {
+              error: `No credential found for "${service}". Use askAlec to escalate.`,
+            };
+          }
+          // Audit: count chat-driven reveals separately from vault reveals so
+          // the access log makes the surface clear.
+          await logAccess({
+            action: "viewed_credential_in_chat",
+            resourceId: match.id,
+            resourceType: "credential",
+            metadata: { service: match.service },
+          });
+          return {
+            id: match.id,
+            service: match.service,
+            username: match.username,
+            password: match.password,
+            url: match.url,
+            isShared: match.isShared,
+          };
+        },
+      }),
       askAlec: tool({
         description: `Use when you cannot confidently answer from the context above. Captures the full conversation so ${adminName} has context.`,
         inputSchema: z.object({

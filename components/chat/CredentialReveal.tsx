@@ -58,9 +58,9 @@ function CredField({
 
 export type CredentialRevealProps = {
   service: string;
-  username: string;
+  username?: string | null;
   password: string;
-  url?: string;
+  url?: string | null;
   sharedWith?: boolean;
   className?: string;
 };
@@ -98,12 +98,14 @@ export function CredentialReveal({
         )}
       </div>
 
-      <CredField
-        label="Username"
-        value={username}
-        mono
-        onCopy={() => copyAndToast(username, "Username copied", showToast)}
-      />
+      {username && (
+        <CredField
+          label="Username"
+          value={username}
+          mono
+          onCopy={() => copyAndToast(username, "Username copied", showToast)}
+        />
+      )}
 
       <CredField
         label="Password"

@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import type { UIMessage } from "ai";
 import { UserBubble, AssistantBubble } from "@/components/chat/MessageBubble";
+import { CredentialReveal } from "@/components/chat/CredentialReveal";
 import { EscalationCard } from "@/components/chat/EscalationCard";
 import { EmptyState } from "@/components/chat/EmptyState";
 import { ChatInput } from "@/components/chat/ChatInput";
@@ -15,22 +16,40 @@ function formatTime(date: Date): string {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-function getTextFromParts(message: UIMessage): string {
-  // When the model interleaves text and tool calls, it produces multiple text
-  // parts in a single message. Joining with "" lost the sentence break between
-  // them — "Alec!" + "Your" → "Alec!Your". Join with a space and collapse any
-  // accidental doubles so the bubble reads naturally.
+type AnyPart = UIMessage["parts"][number];
+
+function getUserText(message: UIMessage): string {
   return message.parts
-    .filter((p): p is Extract<UIMessage["parts"][number], { type: "text" }> =>
-      p.type === "text",
-    )
+    .filter((p): p is Extract<AnyPart, { type: "text" }> => p.type === "text")
     .map((p) => p.text)
     .join(" ")
-    // Reflow: collapse multi-spaces and don't leave a space before punctuation.
     .replace(/\s+([.,!?;:])/g, "$1")
     .replace(/\s{2,}/g, " ")
     .trim();
 }
+
+/** Trim trailing newlines/spaces so the card sits flush against the text above. */
+function trimRight(s: string): string {
+  return s.replace(/\s+$/g, "");
+}
+
+/** Read the structured output of a tool part regardless of which v6 state it's in. */
+function getToolOutput<T = unknown>(part: AnyPart): T | null {
+  if (!("type" in part) || !part.type.startsWith("tool-")) return null;
+  // AI SDK v6: when state === 'output-available' the result is on .output
+  const p = part as { state?: string; output?: T };
+  if (p.state === "output-available" && p.output !== undefined) return p.output;
+  return null;
+}
+
+type RevealOutput = {
+  service?: string;
+  username?: string | null;
+  password?: string;
+  url?: string | null;
+  isShared?: boolean;
+  error?: string;
+};
 
 // ── component ─────────────────────────────────────────────────────────────────
 
@@ -63,8 +82,6 @@ export function Chat() {
   }
 
   const isEmpty = messages.length === 0;
-
-  // Time pill — use current session time (UIMessage has no createdAt in v6)
   const [sessionTime] = useState(() => formatTime(new Date()));
   const timePill = `Today · ${sessionTime}`;
 
@@ -84,39 +101,116 @@ export function Chat() {
 
           {messages.map((message) => {
             if (message.role === "user") {
-              const text = getTextFromParts(message);
+              const text = getUserText(message);
               if (!text) return null;
-              return (
-                <UserBubble key={message.id}>{text}</UserBubble>
-              );
+              return <UserBubble key={message.id}>{text}</UserBubble>;
             }
 
-            if (message.role === "assistant") {
-              // Collect text and tool parts in order
-              const textContent = getTextFromParts(message);
-              const hasEscalation = message.parts.some(
-                (p) => p.type === "tool-askAlec",
-              );
+            if (message.role !== "assistant") return null;
 
-              return (
-                <div key={message.id}>
-                  {textContent && (
-                    <AssistantBubble>{textContent}</AssistantBubble>
-                  )}
-                  {hasEscalation && (
-                    <EscalationCard adminName="Alec" />
-                  )}
-                </div>
-              );
+            // Walk parts in order. Group adjacent text into one paragraph,
+            // render reveal cards and escalation cards inline between text
+            // runs. The whole sequence lives inside a single AssistantBubble
+            // so the design's bubble border wraps text + cards together.
+            const segments: Array<
+              | { kind: "text"; text: string }
+              | { kind: "reveal"; data: RevealOutput }
+              | { kind: "escalate" }
+              | { kind: "reveal-error"; message: string }
+            > = [];
+
+            let textBuf: string[] = [];
+            const flushText = () => {
+              if (!textBuf.length) return;
+              const joined = textBuf
+                .join(" ")
+                .replace(/\s+([.,!?;:])/g, "$1")
+                .replace(/\s{2,}/g, " ")
+                .trim();
+              if (joined) segments.push({ kind: "text", text: joined });
+              textBuf = [];
+            };
+
+            for (const part of message.parts) {
+              if (part.type === "text") {
+                textBuf.push(part.text);
+                continue;
+              }
+              if (part.type === "tool-revealCredential") {
+                flushText();
+                const out = getToolOutput<RevealOutput>(part);
+                if (out) {
+                  if (out.error) {
+                    segments.push({ kind: "reveal-error", message: out.error });
+                  } else if (out.service && out.password) {
+                    segments.push({ kind: "reveal", data: out });
+                  }
+                }
+                continue;
+              }
+              if (part.type === "tool-askAlec") {
+                flushText();
+                segments.push({ kind: "escalate" });
+                continue;
+              }
             }
+            flushText();
 
-            return null;
+            if (segments.length === 0) return null;
+
+            return (
+              <AssistantBubble key={message.id}>
+                {segments.map((seg, i) => {
+                  if (seg.kind === "text") {
+                    return (
+                      <p
+                        key={i}
+                        className={
+                          i === 0
+                            ? ""
+                            : "mt-2.5"
+                        }
+                      >
+                        {trimRight(seg.text)}
+                      </p>
+                    );
+                  }
+                  if (seg.kind === "reveal") {
+                    return (
+                      <CredentialReveal
+                        key={i}
+                        service={seg.data.service!}
+                        username={seg.data.username ?? undefined}
+                        password={seg.data.password!}
+                        url={seg.data.url ?? undefined}
+                        sharedWith={seg.data.isShared}
+                      />
+                    );
+                  }
+                  if (seg.kind === "reveal-error") {
+                    return (
+                      <p key={i} className="mt-2 text-[13px] text-text-3 italic">
+                        {seg.message}
+                      </p>
+                    );
+                  }
+                  if (seg.kind === "escalate") {
+                    return (
+                      <div key={i} className="mt-2.5 -mx-1">
+                        <EscalationCard className="mb-0" />
+                      </div>
+                    );
+                  }
+                  return <Fragment key={i} />;
+                })}
+              </AssistantBubble>
+            );
           })}
 
           {/* Streaming indicator — only when no text yet */}
           {isStreaming &&
             (messages.at(-1)?.role !== "assistant" ||
-              !getTextFromParts(messages.at(-1)!)) && (
+              !getUserText(messages.at(-1)!)) && (
               <div className="mb-4 flex max-w-[86%] flex-col items-start">
                 <span className="mb-1 ml-1 font-display text-[12.5px] font-semibold uppercase tracking-[0.14em] text-accent">
                   FAMILY
