@@ -1,35 +1,111 @@
 "use server";
 
 import { z } from "zod";
+import { redirect } from "next/navigation";
 import { createSupabaseServer } from "@/lib/supabase/server";
-import { env } from "@/lib/env";
 
 const emailSchema = z.string().email("Please enter a valid email address.");
+const codeSchema = z
+  .string()
+  .regex(/^\d{6}$/, "Codes are 6 digits.");
 
-export type SendMagicLinkState = { sent?: true; error?: string };
+export type LoginState = {
+  step: "email" | "code";
+  email?: string;
+  error?: string;
+  sentAt?: number; // epoch ms — lets the client show a "resend in Ns" countdown
+};
 
-export async function sendMagicLink(
-  _prev: SendMagicLinkState,
+export const initialLoginState: LoginState = { step: "email" };
+
+/** Step 1 — email submitted, request OTP. */
+export async function requestOtp(
+  _prev: LoginState,
   formData: FormData,
-): Promise<SendMagicLinkState> {
-  const raw = formData.get("email");
-  const result = emailSchema.safeParse(raw);
-
-  if (!result.success) {
-    return { error: result.error.issues[0]?.message ?? "Invalid email." };
+): Promise<LoginState> {
+  const raw = formData.get("email")?.toString().trim().toLowerCase() ?? "";
+  const parsed = emailSchema.safeParse(raw);
+  if (!parsed.success) {
+    return { step: "email", email: raw, error: parsed.error.issues[0]?.message };
   }
 
   const sb = await createSupabaseServer();
   const { error } = await sb.auth.signInWithOtp({
-    email: result.data,
-    options: {
-      emailRedirectTo: `${env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
-    },
+    email: parsed.data,
+    // Only pre-approved family members can sign in. inviteUserByEmail on
+    // /admin/users creates the auth.users row for new invitees first.
+    options: { shouldCreateUser: false },
   });
 
   if (error) {
-    return { error: error.message };
+    // Map known errors to user-readable messages.
+    const msg = error.message.toLowerCase();
+    if (msg.includes("rate") || msg.includes("too many")) {
+      return {
+        step: "email",
+        email: parsed.data,
+        error: "Too many attempts. Wait a minute and try again.",
+      };
+    }
+    if (msg.includes("not allowed") || msg.includes("signups not allowed")) {
+      return {
+        step: "email",
+        email: parsed.data,
+        error:
+          "That email isn't on the family list yet. Ask Alec to invite you.",
+      };
+    }
+    return { step: "email", email: parsed.data, error: error.message };
   }
 
-  return { sent: true };
+  return { step: "code", email: parsed.data, sentAt: Date.now() };
+}
+
+/** Step 2 — code entered, verify and create session. */
+export async function verifyOtp(
+  prev: LoginState,
+  formData: FormData,
+): Promise<LoginState> {
+  const email =
+    formData.get("email")?.toString().trim().toLowerCase() ?? prev.email ?? "";
+  const code = formData.get("code")?.toString().trim() ?? "";
+
+  const emailParsed = emailSchema.safeParse(email);
+  if (!emailParsed.success) {
+    return { step: "email", error: "Please start over." };
+  }
+
+  const codeParsed = codeSchema.safeParse(code);
+  if (!codeParsed.success) {
+    return {
+      step: "code",
+      email: emailParsed.data,
+      error: codeParsed.error.issues[0]?.message,
+    };
+  }
+
+  const sb = await createSupabaseServer();
+  const { data, error } = await sb.auth.verifyOtp({
+    email: emailParsed.data,
+    token: codeParsed.data,
+    type: "email",
+  });
+
+  if (error || !data.session) {
+    return {
+      step: "code",
+      email: emailParsed.data,
+      error: "Code is wrong or has expired. Try a fresh one.",
+    };
+  }
+
+  // Cookies are set by the Supabase client on the Server Action response.
+  // Next.js attaches them to the redirect — the (member) layout will read
+  // the session and serve the chat home.
+  redirect("/");
+}
+
+/** Step back — user wants to use a different email. */
+export async function resetToEmail(): Promise<LoginState> {
+  return { step: "email" };
 }
