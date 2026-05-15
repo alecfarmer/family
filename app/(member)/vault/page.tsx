@@ -1,13 +1,15 @@
 import { requireUser } from "@/lib/auth";
+import { getActiveHouseholdScope } from "@/lib/activeHousehold";
 import { SearchBar } from "@/components/vault/SearchBar";
 import { VaultList, type VaultCredential } from "@/components/vault/VaultList";
 
 export default async function VaultPage() {
   const { profile, sb } = await requireUser();
   const isAdmin = profile.role === "admin";
+  const scope = await getActiveHouseholdScope();
 
-  // Pull credentials + household memberships in parallel. RLS guarantees
-  // the user only sees creds for their household(s) + globally shared rows.
+  // Pull credentials + the user's memberships in parallel. RLS handles
+  // access control; we just need the join data for chip display.
   const [credsRes, membershipsRes] = await Promise.all([
     sb
       .from("credentials")
@@ -20,10 +22,9 @@ export default async function VaultPage() {
 
   const membershipIds = (membershipsRes.data ?? []).map((m) => m.household_id);
 
-  // For admins we fetch every household so the credential form's select
-  // can show all of them. For non-admins we only fetch the user's own
-  // memberships — that's also what feeds the per-row household chip and
-  // the household filter pill row.
+  // Admin gets the full household list (for the credential form's select).
+  // Non-admin only needs their own memberships (for the row chip and the
+  // global switcher, which the layout already passes separately).
   const householdsRes = isAdmin
     ? await sb.from("households").select("id, name").order("name")
     : membershipIds.length
@@ -37,7 +38,7 @@ export default async function VaultPage() {
   const households = householdsRes.data ?? [];
   const householdNameById = new Map(households.map((h) => [h.id, h.name]));
 
-  const creds: VaultCredential[] = (credsRes.data ?? []).map((c) => ({
+  const allCreds: VaultCredential[] = (credsRes.data ?? []).map((c) => ({
     id: c.id,
     service_name: c.service_name,
     username: c.username,
@@ -51,13 +52,28 @@ export default async function VaultPage() {
     notes: c.notes,
   }));
 
+  // Apply the global household scope. "All" = no filter. Specific household
+  // = that household's creds PLUS globally shared creds (e.g. Netflix), so
+  // the family-wide essentials still surface when scoped.
+  const creds =
+    scope.kind === "all"
+      ? allCreds
+      : allCreds.filter(
+          (c) => c.household_id === scope.id || c.is_shared,
+        );
+
   const total = creds.length;
   const shared = creds.filter((c) => c.is_shared).length;
   const categories = Array.from(new Set(creds.map((c) => c.category))).sort();
 
+  // Show the household chip on rows when:
+  // - user is in 2+ households (multi-household view), OR
+  // - viewing a specific household scope and the row is shared (visually
+  //   distinguishes "this household's WiFi" from "the shared Netflix").
+  const multiHousehold = households.length >= 2;
+
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      {/* Page header */}
       <div className="flex-shrink-0 bg-bg px-4 pb-3 pt-6">
         <h1
           className="mb-1.5 font-display font-semibold text-text"
@@ -70,16 +86,18 @@ export default async function VaultPage() {
           {total} credential{total !== 1 ? "s" : ""} · {shared} shared with you
         </p>
 
-        {/* Search bar (visual only v1) */}
         <SearchBar className="mb-3" />
       </div>
 
-      {/* Filter pills + scrollable list (client) */}
       <VaultList
         credentials={creds}
         categories={categories}
         isAdmin={isAdmin}
         households={households}
+        scopedHousehold={
+          scope.kind === "household" ? { id: scope.id, name: scope.name } : null
+        }
+        multiHousehold={multiHousehold}
       />
     </div>
   );

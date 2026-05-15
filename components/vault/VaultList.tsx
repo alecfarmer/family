@@ -12,24 +12,23 @@ import {
 
 export type VaultCredential = CredentialRowData & {
   category: string;
-  // The admin form needs these fields when editing. They're not sensitive
-  // — the encrypted password blob never leaves the server.
   household_id: string | null;
   household_name: string | null;
   url: string | null;
   notes: string | null;
 };
 
-const SHARED_KEY = "__shared__";
-
 type VaultListProps = {
   credentials: VaultCredential[];
   categories: string[];
   /** When true, render add/edit/delete affordances. */
   isAdmin?: boolean;
-  /** Supplied to the credential form's household select (admin) and to the
-      household filter pills (everyone). */
+  /** Passed to the credential form's household select. */
   households?: HouseholdOption[];
+  /** Currently-active household scope from the global switcher. */
+  scopedHousehold?: { id: string; name: string } | null;
+  /** True when the user belongs to ≥2 households (drives chip display). */
+  multiHousehold?: boolean;
 };
 
 export function VaultList({
@@ -37,13 +36,11 @@ export function VaultList({
   categories,
   isAdmin = false,
   households = [],
+  scopedHousehold = null,
+  multiHousehold = false,
 }: VaultListProps) {
   const router = useRouter();
   const [selected, setSelected] = useState("All");
-  // Household filter — only shown if user belongs to ≥2 households (or sees
-  // at least one shared credential alongside their household creds).
-  const showHouseholdFilter = households.length >= 2;
-  const [householdFilter, setHouseholdFilter] = useState<string>("all");
 
   const [sheet, setSheet] = useState<
     | { open: false }
@@ -53,17 +50,10 @@ export function VaultList({
 
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const filtered = credentials.filter((c) => {
-    if (selected !== "All" && c.category !== selected) return false;
-    if (householdFilter !== "all") {
-      if (householdFilter === SHARED_KEY) {
-        if (!(c.is_shared || c.household_id === null)) return false;
-      } else if (c.household_id !== householdFilter) {
-        return false;
-      }
-    }
-    return true;
-  });
+  const filtered =
+    selected === "All"
+      ? credentials
+      : credentials.filter((c) => c.category === selected);
 
   function openCreate() {
     setSheet({ open: true, mode: "create" });
@@ -115,38 +105,20 @@ export function VaultList({
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      {/* Household filter (only shown when the user is in 2+ households) */}
-      {showHouseholdFilter && (
-        <div className="px-4 pt-3 pb-1.5">
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {[
-              { key: "all", label: "All" },
-              ...households.map((h) => ({ key: h.id, label: h.name })),
-              { key: SHARED_KEY, label: "Shared" },
-            ].map((p) => {
-              const active = householdFilter === p.key;
-              return (
-                <button
-                  key={p.key}
-                  type="button"
-                  onClick={() => setHouseholdFilter(p.key)}
-                  className={
-                    "shrink-0 whitespace-nowrap rounded-full px-3 py-1 text-[12.5px] font-medium " +
-                    (active
-                      ? "bg-accent text-bg"
-                      : "border border-border bg-surface text-text-2")
-                  }
-                >
-                  {p.label}
-                </button>
-              );
-            })}
+      {/* Optional scope banner — only shown when filtered to one household
+          via the global switcher. Tells the user what they're looking at
+          without forcing them up to the header to recheck. */}
+      {scopedHousehold && (
+        <div className="px-4 pt-1">
+          <div className="rounded-full border border-accent/30 bg-accent/[0.06] px-3 py-1.5 text-center font-sans text-[11.5px] text-accent">
+            Viewing <span className="font-semibold">{scopedHousehold.name}</span>{" "}
+            + shared
           </div>
         </div>
       )}
 
-      {/* Pinned category pills + (admin) Add button */}
-      <div className="flex items-center gap-2 px-4 pt-2 pb-2">
+      {/* Category pills + (admin) Add button */}
+      <div className="flex items-center gap-2 px-4 pt-3 pb-2">
         <div className="min-w-0 flex-1">
           <CategoryPills
             categories={categories}
@@ -194,7 +166,9 @@ export function VaultList({
               />
             </svg>
             <p className="font-sans text-[14px] text-text-3">
-              No credentials in this category
+              {scopedHousehold
+                ? `Nothing in ${scopedHousehold.name} for this category yet.`
+                : "No credentials in this category"}
             </p>
             {isAdmin && (
               <button
@@ -211,10 +185,11 @@ export function VaultList({
             <CredentialRow
               key={cred.id}
               credential={cred}
-              // Only surface the household name when it adds information —
-              // i.e. the user is in multiple households or this credential is
-              // shared across them.
-              showHouseholdChip={showHouseholdFilter || cred.is_shared}
+              // Surface the household name on a row when it adds information:
+              // - user is in multiple households, OR
+              // - this row is shared (so the SHARED chip surfaces alongside
+              //   the scoped household's items)
+              showHouseholdChip={multiHousehold || cred.is_shared}
               admin={
                 isAdmin
                   ? {

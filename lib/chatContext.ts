@@ -2,6 +2,7 @@ import "server-only";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { decryptPassword } from "@/lib/crypto";
 import { env } from "@/lib/env";
+import { getActiveHouseholdScope } from "@/lib/activeHousehold";
 import type { Tables } from "@/lib/supabase/types";
 
 /**
@@ -32,6 +33,10 @@ export interface ChatContext {
   credentials: ChatContextCredential[];
   devices: Tables<"devices">[];
   knowledge: Tables<"knowledge_base">[];
+  /** The user's currently-active household scope (drives filtering above). */
+  scope:
+    | { kind: "all" }
+    | { kind: "household"; id: string; name: string };
 }
 
 export async function buildChatContext(): Promise<ChatContext> {
@@ -88,7 +93,7 @@ export async function buildChatContext(): Promise<ChatContext> {
   // without an N+1 query.
   const householdNameById = new Map(households.map((h) => [h.id, h.name]));
 
-  const credentials: ChatContextCredential[] = (credsRes.data ?? []).map(
+  const allCredentials: ChatContextCredential[] = (credsRes.data ?? []).map(
     (c) => ({
       id: c.id,
       service: c.service_name,
@@ -105,12 +110,32 @@ export async function buildChatContext(): Promise<ChatContext> {
     }),
   );
 
+  // Apply the user's global household scope so the AI (and quick-match) see
+  // only the credentials + devices relevant to what they're currently
+  // viewing. "All" passes through; a specific household keeps that
+  // household's items PLUS globally shared rows for credentials, and only
+  // that household's devices.
+  const scope = await getActiveHouseholdScope();
+  const credentials =
+    scope.kind === "all"
+      ? allCredentials
+      : allCredentials.filter(
+          (c) => c.householdId === scope.id || c.isShared,
+        );
+
+  const allDevices = devicesRes.data ?? [];
+  const devices =
+    scope.kind === "all"
+      ? allDevices
+      : allDevices.filter((d) => d.household_id === scope.id);
+
   return {
     profile,
     households,
     credentials,
-    devices: devicesRes.data ?? [],
+    devices,
     knowledge: kbRes.data ?? [],
+    scope,
   };
 }
 
@@ -133,6 +158,14 @@ export function renderSystemPrompt(ctx: ChatContext): string {
     `If the user asks about a service that is NOT in the Credentials list (and isn't covered by the Devices or Knowledge Base), call the askAlec tool with a one-sentence summary instead of guessing. ${adminName} is the family member who manages this app and will follow up directly.`,
     `Never invent credentials, device details, or instructions. Only use the facts listed below.`,
     ``,
+    // Tell the model what the user is currently viewing so it can frame
+    // ambiguous answers naturally. When the scope is a single household, the
+    // credentials / devices below have already been filtered to that scope
+    // (plus globally shared credentials).
+    ctx.scope.kind === "household"
+      ? `## Current view\nThe user is viewing the "${ctx.scope.name}" household. Answers should default to items at "${ctx.scope.name}" unless the user names a different one.`
+      : "",
+    ctx.scope.kind === "household" ? "" : "",
     `## Households`,
     ...(ctx.households.length
       ? ctx.households.map((h) => `- ${h.name}`)
