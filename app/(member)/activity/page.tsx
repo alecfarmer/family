@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireUser } from "@/lib/auth";
 import { supabaseService } from "@/lib/supabase/service";
 import { ActivityList } from "@/components/notifications/ActivityList";
@@ -51,7 +52,17 @@ export default async function ActivityPage() {
     .slice(0, 10);
   const billingAllowed = await canManageBilling();
 
-  // 6 parallel queries — RLS scopes each to the authenticated user's data.
+  // `announcements` isn't yet in `lib/supabase/types.ts` (hand-written) and
+  // the task spec forbids editing that file. Inline the row shape we need
+  // from the join just below.
+  type AnnouncementActivityRow = {
+    id: string;
+    title: string;
+    body: string;
+    created_at: string;
+  };
+
+  // 7 parallel queries — RLS scopes each to the authenticated user's data.
   // The billing query is admin-gated; non-admins get an empty resolved value.
   const [
     helpRes,
@@ -60,6 +71,7 @@ export default async function ActivityPage() {
     loginRes,
     householdRes,
     billingRes,
+    announcementRes,
   ] = await Promise.all([
     // 1. Resolved help requests (reply activity)
     sb
@@ -123,6 +135,19 @@ export default async function ActivityPage() {
           .order("price_locked_until", { ascending: true })
           .limit(10)
       : Promise.resolve({ data: [] }),
+
+    // 7. Announcements visible to the user. RLS already filters by
+    //    (global OR member-of-household); we add the time/expiry filters
+    //    here so the activity feed only surfaces fresh, unexpired posts.
+    //    Cast the client because `announcements` isn't in the hand-written
+    //    Database type yet (lib/supabase/types.ts is off-limits per spec).
+    (sb as unknown as SupabaseClient)
+      .from("announcements")
+      .select("id, title, body, created_at")
+      .gte("created_at", thirtyDaysAgo)
+      .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
+      .order("created_at", { ascending: false })
+      .limit(20),
   ]);
 
   // Update last_seen_activity via service role to bypass RLS
@@ -217,6 +242,27 @@ export default async function ActivityPage() {
       title: `Welcome to ${householdName}`,
       body: "You were added as a member. Take a look around.",
       meta: "Household",
+      time: formatActivityRowTime(createdAt),
+      unread: createdAt > lastSeen,
+      createdAt,
+    });
+  }
+
+  // Announcements — admin-posted notes to the family. `kind='household'`
+  // reuses the FamilyMark icon since there's no dedicated announcement
+  // glyph yet; tone='admin' gives it the purple tile that visually
+  // separates it from the orange/green/amber rows.
+  const announcementRows =
+    (announcementRes.data as AnnouncementActivityRow[] | null) ?? [];
+  for (const a of announcementRows) {
+    const createdAt = new Date(a.created_at);
+    rawItems.push({
+      id: makeId("announcement", a.id),
+      kind: "household" as ActivityKind,
+      tone: "admin" as ActivityTone,
+      title: a.title,
+      body: truncate(a.body, 120),
+      meta: "Announcement",
       time: formatActivityRowTime(createdAt),
       unread: createdAt > lastSeen,
       createdAt,

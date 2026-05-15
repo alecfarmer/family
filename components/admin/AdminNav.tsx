@@ -17,6 +17,7 @@ const NAV_ITEMS = [
   { label: "Knowledge", href: "/admin/knowledge" },
   { label: "Logs", href: "/admin/logs" },
   { label: "Help Requests", href: "/admin/help-requests" },
+  { label: "Announcements", href: "/admin/announcements" },
 ] as const;
 
 export function AdminNav() {
