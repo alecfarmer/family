@@ -21,6 +21,9 @@ export interface ChatContextCredential {
   notes: string | null;
   category: Tables<"credentials">["category"];
   isShared: boolean;
+  householdId: string | null;
+  /** Human-readable household name (null for credentials not tied to any). */
+  householdName: string | null;
 }
 
 export interface ChatContext {
@@ -81,6 +84,10 @@ export async function buildChatContext(): Promise<ChatContext> {
       )
     : await kbQuery.is("household_id", null);
 
+  // Lookup table so we can attach the household name to each credential
+  // without an N+1 query.
+  const householdNameById = new Map(households.map((h) => [h.id, h.name]));
+
   const credentials: ChatContextCredential[] = (credsRes.data ?? []).map(
     (c) => ({
       id: c.id,
@@ -91,6 +98,10 @@ export async function buildChatContext(): Promise<ChatContext> {
       notes: c.notes,
       category: c.category,
       isShared: c.is_shared,
+      householdId: c.household_id,
+      householdName: c.household_id
+        ? (householdNameById.get(c.household_id) ?? null)
+        : null,
     }),
   );
 
@@ -128,11 +139,18 @@ export function renderSystemPrompt(ctx: ChatContext): string {
       : ["- (none on file)"]),
     ``,
     `## Credentials available (call revealCredential with the exact service name)`,
+    ctx.households.length > 1
+      ? `The user is in multiple households — if the same service (e.g. "WiFi") exists in more than one, ask which household before calling revealCredential.`
+      : "",
     ...(ctx.credentials.length
       ? ctx.credentials.map((c) => {
-          const shared = c.isShared ? " (shared)" : "";
+          const household = c.householdName
+            ? ` @ ${c.householdName}`
+            : c.isShared
+              ? " (shared)"
+              : "";
           const notes = c.notes ? ` — notes: ${c.notes}` : "";
-          return `- ${c.service} [${c.category}]${shared}${notes}`;
+          return `- ${c.service} [${c.category}]${household}${notes}`;
         })
       : ["- (none on file)"]),
     ``,

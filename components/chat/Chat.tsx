@@ -57,7 +57,7 @@ export function Chat() {
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const { messages, sendMessage, status } = useChat({
+  const { messages, sendMessage, setMessages, status } = useChat({
     transport: new DefaultChatTransport({ api: "/api/chat" }),
   });
 
@@ -70,15 +70,86 @@ export function Chat() {
     el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
-  function handleSend() {
-    const text = input.trim();
-    if (!text || isStreaming) return;
-    void sendMessage({ text });
-    setInput("");
+  /**
+   * Try the cheap quick-match endpoint first. It looks up a single
+   * unambiguous credential on the server and returns the card payload,
+   * letting us render the chat turn locally without any LLM call. The AI
+   * fallback is used whenever the match is empty, ambiguous, or the
+   * endpoint errors (network, auth, etc.) — so this is strictly additive.
+   *
+   * Returns true if we handled the turn locally.
+   */
+  async function trySubmitViaQuickMatch(text: string): Promise<boolean> {
+    try {
+      const res = await fetch("/api/chat/quick", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      if (!res.ok) return false;
+      const json = (await res.json()) as {
+        matched: boolean;
+        credential?: {
+          id: string;
+          service: string;
+          username: string | null;
+          password: string;
+          url: string | null;
+          isShared: boolean;
+          householdName: string | null;
+        };
+      };
+      if (!json.matched || !json.credential) return false;
+
+      const cred = json.credential;
+      const stamp = Date.now();
+      const householdSuffix = cred.householdName
+        ? ` (${cred.householdName})`
+        : "";
+
+      // Synthesize the conversation turn — same shape useChat emits, so the
+      // existing renderer treats it identically.
+      setMessages([
+        ...messages,
+        {
+          id: `quick-u-${stamp}`,
+          role: "user",
+          parts: [{ type: "text", text }],
+        },
+        {
+          id: `quick-a-${stamp}`,
+          role: "assistant",
+          parts: [
+            { type: "text", text: `Here's the ${cred.service}${householdSuffix} info:` },
+            {
+              type: "tool-revealCredential",
+              toolCallId: `quick-tc-${stamp}`,
+              state: "output-available",
+              input: { service: cred.service },
+              output: cred,
+            },
+          ],
+          // The cast keeps the synthetic message past AI SDK's strict UIPart
+          // discriminated union without dragging the generic in everywhere.
+        } as never,
+      ]);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
-  function handleSelect(text: string) {
-    void sendMessage({ text });
+  async function handleSend() {
+    const text = input.trim();
+    if (!text || isStreaming) return;
+    setInput("");
+    const handled = await trySubmitViaQuickMatch(text);
+    if (!handled) void sendMessage({ text });
+  }
+
+  async function handleSelect(text: string) {
+    const handled = await trySubmitViaQuickMatch(text);
+    if (!handled) void sendMessage({ text });
   }
 
   const isEmpty = messages.length === 0;

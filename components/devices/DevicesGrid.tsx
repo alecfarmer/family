@@ -6,7 +6,9 @@ import { DeviceCard } from "./DeviceCard";
 import { DeviceForm, type HouseholdOption } from "@/components/admin/DeviceForm";
 import type { Tables } from "@/lib/supabase/types";
 
-export type DeviceRow = Tables<"devices">;
+export type DeviceRow = Tables<"devices"> & {
+  household_name?: string | null;
+};
 
 type DevicesGridProps = {
   devices: DeviceRow[];
@@ -20,6 +22,14 @@ export function DevicesGrid({
   households = [],
 }: DevicesGridProps) {
   const router = useRouter();
+  const showHouseholdFilter = households.length >= 2;
+  const [householdFilter, setHouseholdFilter] = useState<string>("all");
+
+  const filtered =
+    householdFilter === "all"
+      ? devices
+      : devices.filter((d) => d.household_id === householdFilter);
+
   const [sheet, setSheet] = useState<
     | { open: false }
     | { open: true; mode: "create" }
@@ -66,6 +76,35 @@ export function DevicesGrid({
 
   return (
     <>
+      {/* Household filter (only when user is in 2+ households) */}
+      {showHouseholdFilter && (
+        <div className="px-4 pt-1 pb-1.5">
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {[
+              { key: "all", label: "All" },
+              ...households.map((h) => ({ key: h.id, label: h.name })),
+            ].map((p) => {
+              const active = householdFilter === p.key;
+              return (
+                <button
+                  key={p.key}
+                  type="button"
+                  onClick={() => setHouseholdFilter(p.key)}
+                  className={
+                    "shrink-0 whitespace-nowrap rounded-full px-3 py-1 text-[12.5px] font-medium " +
+                    (active
+                      ? "bg-accent text-bg"
+                      : "border border-border bg-surface text-text-2")
+                  }
+                >
+                  {p.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Add button — top-right, only for admins */}
       {isAdmin && devices.length > 0 && (
         <div className="px-4 pb-2 pt-1 flex justify-end">
@@ -80,7 +119,7 @@ export function DevicesGrid({
         </div>
       )}
 
-      {devices.length === 0 ? (
+      {filtered.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center py-16 text-center">
           <p className="font-sans text-[14px] text-text-2">
             No devices tracked yet.
@@ -97,9 +136,12 @@ export function DevicesGrid({
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-2.5 px-4 pb-5 pt-1.5">
-          {devices.map((d) => (
+          {filtered.map((d) => (
             <div key={d.id} className="relative">
-              <DeviceCard device={d} />
+              <DeviceCard
+                device={d}
+                showHouseholdChip={showHouseholdFilter}
+              />
               {isAdmin && (
                 <div className="absolute right-1.5 top-1.5 flex gap-1">
                   <button

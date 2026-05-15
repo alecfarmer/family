@@ -3,7 +3,9 @@ import { Badge } from "@/components/ui/Badge";
 import { DeviceIcon, resolveDeviceIconKey } from "./DeviceIcons";
 import type { Tables } from "@/lib/supabase/types";
 
-type Device = Tables<"devices">;
+type Device = Tables<"devices"> & {
+  household_name?: string | null;
+};
 
 function resolveWarrantyBadge(
   warrantyExpiry: string | null,
@@ -22,9 +24,11 @@ function resolveWarrantyBadge(
 
 type DeviceCardProps = {
   device: Device;
+  /** Show the household name as a small chip below the warranty badge. */
+  showHouseholdChip?: boolean;
 };
 
-export function DeviceCard({ device }: DeviceCardProps) {
+export function DeviceCard({ device, showHouseholdChip }: DeviceCardProps) {
   const today = new Date();
   const iconKey = resolveDeviceIconKey(device.type, device.name);
   const warranty = resolveWarrantyBadge(device.warranty_expiry, today);
@@ -54,9 +58,12 @@ export function DeviceCard({ device }: DeviceCardProps) {
         )}
       </div>
 
-      {/* Warranty badge pinned to bottom */}
-      <div className="mt-auto">
+      {/* Warranty badge + (optional) household chip pinned to bottom */}
+      <div className="mt-auto flex flex-wrap items-center gap-1.5">
         <Badge tone={warranty.tone}>{warranty.label}</Badge>
+        {showHouseholdChip && device.household_name && (
+          <Badge tone="neutral">{device.household_name}</Badge>
+        )}
       </div>
     </Link>
   );

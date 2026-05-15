@@ -14,6 +14,7 @@ export type CredentialRowData = {
   service_name: string;
   username: string | null;
   is_shared: boolean;
+  household_name?: string | null;
 };
 
 export type CredentialRowAdmin = {
@@ -26,11 +27,17 @@ type CredentialRowProps = {
   credential: CredentialRowData;
   /** When supplied, shows admin edit + delete buttons alongside eye+copy. */
   admin?: CredentialRowAdmin;
+  /** When true, the row shows the household name (or SHARED) as a small chip. */
+  showHouseholdChip?: boolean;
 };
 
 const CLEAR_AFTER_MS = 30_000;
 
-export function CredentialRow({ credential, admin }: CredentialRowProps) {
+export function CredentialRow({
+  credential,
+  admin,
+  showHouseholdChip,
+}: CredentialRowProps) {
   const { id, service_name, username, is_shared } = credential;
   const showCopyToast = useCopyToast();
 
@@ -122,15 +129,20 @@ export function CredentialRow({ credential, admin }: CredentialRowProps) {
     >
       {/* Left content */}
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* Service name + shared badge */}
-        <div className="mb-1 flex items-center gap-2">
+        {/* Service name + shared/household chips */}
+        <div className="mb-1 flex flex-wrap items-center gap-2">
           <span
             className="font-display font-semibold text-text"
             style={{ fontSize: 18, letterSpacing: "0.01em" }}
           >
             {service_name}
           </span>
-          {is_shared && <Badge tone="accent">SHARED</Badge>}
+          {showHouseholdChip &&
+            (is_shared || !credential.household_name ? (
+              <Badge tone="accent">SHARED</Badge>
+            ) : (
+              <Badge tone="neutral">{credential.household_name}</Badge>
+            ))}
         </div>
 
         {/* Username */}

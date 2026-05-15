@@ -6,12 +6,36 @@ export default async function VaultPage() {
   const { profile, sb } = await requireUser();
   const isAdmin = profile.role === "admin";
 
-  const credsRes = await sb
-    .from("credentials")
-    .select(
-      "id, household_id, category, service_name, username, url, notes, is_shared",
-    )
-    .order("service_name");
+  // Pull credentials + household memberships in parallel. RLS guarantees
+  // the user only sees creds for their household(s) + globally shared rows.
+  const [credsRes, membershipsRes] = await Promise.all([
+    sb
+      .from("credentials")
+      .select(
+        "id, household_id, category, service_name, username, url, notes, is_shared",
+      )
+      .order("service_name"),
+    sb.from("household_members").select("household_id").eq("user_id", profile.id),
+  ]);
+
+  const membershipIds = (membershipsRes.data ?? []).map((m) => m.household_id);
+
+  // For admins we fetch every household so the credential form's select
+  // can show all of them. For non-admins we only fetch the user's own
+  // memberships — that's also what feeds the per-row household chip and
+  // the household filter pill row.
+  const householdsRes = isAdmin
+    ? await sb.from("households").select("id, name").order("name")
+    : membershipIds.length
+      ? await sb
+          .from("households")
+          .select("id, name")
+          .in("id", membershipIds)
+          .order("name")
+      : { data: [] };
+
+  const households = householdsRes.data ?? [];
+  const householdNameById = new Map(households.map((h) => [h.id, h.name]));
 
   const creds: VaultCredential[] = (credsRes.data ?? []).map((c) => ({
     id: c.id,
@@ -20,19 +44,15 @@ export default async function VaultPage() {
     is_shared: c.is_shared,
     category: c.category,
     household_id: c.household_id,
+    household_name: c.household_id
+      ? (householdNameById.get(c.household_id) ?? null)
+      : null,
     url: c.url,
     notes: c.notes,
   }));
 
-  // Only admins ever see the household select inside the credential form.
-  // For everyone else we skip the query entirely.
-  const households = isAdmin
-    ? ((await sb.from("households").select("id, name").order("name")).data ?? [])
-    : [];
-
   const total = creds.length;
   const shared = creds.filter((c) => c.is_shared).length;
-
   const categories = Array.from(new Set(creds.map((c) => c.category))).sort();
 
   return (
@@ -54,7 +74,7 @@ export default async function VaultPage() {
         <SearchBar className="mb-3" />
       </div>
 
-      {/* Category pills + scrollable list (client) */}
+      {/* Filter pills + scrollable list (client) */}
       <VaultList
         credentials={creds}
         categories={categories}
