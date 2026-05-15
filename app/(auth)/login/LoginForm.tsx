@@ -195,14 +195,14 @@ function CodeStep(props: {
           type="text"
           inputMode="numeric"
           autoComplete="one-time-code"
-          pattern="\d{6}"
-          maxLength={6}
-          placeholder="123456"
+          pattern="\d{4,12}"
+          maxLength={12}
+          placeholder="Sign-in code"
           required
           disabled={props.pending}
           className={cn(
             inputBase,
-            "mb-[18px] text-center font-mono tracking-[0.5em]",
+            "mb-[18px] text-center font-mono tracking-[0.35em]",
           )}
           style={{ fontSize: 22 }}
         />

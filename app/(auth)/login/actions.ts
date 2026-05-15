@@ -6,7 +6,12 @@ import { createSupabaseServer } from "@/lib/supabase/server";
 import type { LoginState } from "./types";
 
 const emailSchema = z.string().email("Please enter a valid email address.");
-const codeSchema = z.string().regex(/^\d{6}$/, "Codes are 6 digits.");
+// Supabase's OTP_LENGTH is configurable per project (default 6, this project
+// is set to 8). Accept any 4–12 digit code — Supabase itself validates length
+// against what it generated, so we only need to filter non-numeric junk.
+const codeSchema = z
+  .string()
+  .regex(/^\d{4,12}$/, "Enter the digits from your email.");
 
 /** Step 1 — email submitted, request OTP. */
 export async function requestOtp(
