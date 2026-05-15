@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { cn } from "@/components/ui/cn";
 
 type NavItem = {
@@ -71,11 +72,18 @@ function isActive(pathname: string, href: string) {
 
 export function BottomNav() {
   const pathname = usePathname();
+  // Optimistic active state: the moment a tab is tapped, we paint it as
+  // active even before Next.js finishes routing. Keeps the UI feeling
+  // instant when the server takes 200–400 ms to render the destination.
+  const [pendingHref, setPendingHref] = useState<string | null>(null);
 
-  // pb honors the iPhone home-indicator safe area on phones that have one
-  // (≈34 px on iPhone 15+ with Dynamic Island) and falls back to 12 px on
-  // phones without (iPhone SE, Android). The nav background extends all the
-  // way to the bottom of the screen — no dark gap underneath the labels.
+  // Clear the optimistic flag once the URL actually matches.
+  useEffect(() => {
+    if (pendingHref && isActive(pathname, pendingHref)) {
+      setPendingHref(null);
+    }
+  }, [pathname, pendingHref]);
+
   return (
     <nav
       className="flex justify-around border-t border-border bg-bg/90 px-2 pt-2.5 backdrop-blur-2xl"
@@ -84,15 +92,24 @@ export function BottomNav() {
       }}
     >
       {ITEMS.map((it) => {
-        const active = isActive(pathname, it.href);
-        const color = active ? "var(--color-accent)" : "var(--color-text-3)";
+        const realActive = isActive(pathname, it.href);
+        const optimisticActive =
+          pendingHref === it.href ||
+          (pendingHref === null && realActive);
+        const color = optimisticActive
+          ? "var(--color-accent)"
+          : "var(--color-text-3)";
+
         return (
           <Link
             key={it.id}
             href={it.href}
+            prefetch={true}
+            onClick={() => setPendingHref(it.href)}
             className={cn(
-              "flex min-h-[48px] min-w-[64px] flex-col items-center gap-1 rounded-xl px-3.5 py-1.5",
-              active ? "text-accent" : "text-text-3",
+              "flex min-h-[48px] min-w-[64px] flex-col items-center gap-1 rounded-xl px-3.5 py-1.5 select-none",
+              "transition-transform duration-75 active:scale-95",
+              optimisticActive ? "text-accent" : "text-text-3",
             )}
           >
             <NavIcon id={it.id} c={color} />

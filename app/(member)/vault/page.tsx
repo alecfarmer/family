@@ -1,41 +1,25 @@
 import { requireUser } from "@/lib/auth";
 import { getActiveHouseholdScope } from "@/lib/activeHousehold";
+import { getAllHouseholds, getUserHouseholds } from "@/lib/household";
 import { SearchBar } from "@/components/vault/SearchBar";
 import { VaultList, type VaultCredential } from "@/components/vault/VaultList";
 
 export default async function VaultPage() {
   const { profile, sb } = await requireUser();
   const isAdmin = profile.role === "admin";
-  const scope = await getActiveHouseholdScope();
 
-  // Pull credentials + the user's memberships in parallel. RLS handles
-  // access control; we just need the join data for chip display.
-  const [credsRes, membershipsRes] = await Promise.all([
+  // All page-level fetches in parallel. cache()-wrapped helpers share the
+  // membership query with the layout, so no duplicate DB roundtrip.
+  const [credsRes, households, scope] = await Promise.all([
     sb
       .from("credentials")
       .select(
         "id, household_id, category, service_name, username, url, notes, is_shared",
       )
       .order("service_name"),
-    sb.from("household_members").select("household_id").eq("user_id", profile.id),
+    isAdmin ? getAllHouseholds() : getUserHouseholds(profile.id),
+    getActiveHouseholdScope(),
   ]);
-
-  const membershipIds = (membershipsRes.data ?? []).map((m) => m.household_id);
-
-  // Admin gets the full household list (for the credential form's select).
-  // Non-admin only needs their own memberships (for the row chip and the
-  // global switcher, which the layout already passes separately).
-  const householdsRes = isAdmin
-    ? await sb.from("households").select("id, name").order("name")
-    : membershipIds.length
-      ? await sb
-          .from("households")
-          .select("id, name")
-          .in("id", membershipIds)
-          .order("name")
-      : { data: [] };
-
-  const households = householdsRes.data ?? [];
   const householdNameById = new Map(households.map((h) => [h.id, h.name]));
 
   const allCreds: VaultCredential[] = (credsRes.data ?? []).map((c) => ({

@@ -58,6 +58,11 @@ body {
   font-family: var(--font-sans), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   overscroll-behavior: none;
+  /* Removes iOS Safari's legacy 300 ms tap delay on every clickable element. */
+  touch-action: manipulation;
+  /* Suppress the gray flash iOS draws on link taps — we provide our own
+     :active styles where appropriate. */
+  -webkit-tap-highlight-color: transparent;
 }
 
 ::-webkit-scrollbar {
@@ -70,6 +75,62 @@ button,
 textarea,
 select {
   font-family: inherit;
+}
+
+/* ── View Transitions API ───────────────────────────────────────────────────
+   Lets the browser crossfade between same-origin navigations for free.
+   Supported in Chrome (desktop/Android) + Safari 18+ / iOS 18+. Unsupported
+   browsers ignore the at-rule cleanly. */
+@view-transition {
+  navigation: auto;
+}
+
+/* Soft fade-in for the incoming page; outgoing keeps its frame so the swap
+   doesn't look like a flash. ~140 ms feels snappy without being abrupt. */
+::view-transition-old(root) {
+  animation: 140ms ease-out both fade-out;
+}
+::view-transition-new(root) {
+  animation: 180ms ease-out both fade-in;
+}
+
+@keyframes fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Skeleton shimmer used by loading.tsx placeholders. Warm-toned to match
+   the design language; falls back to a static block if reduced motion is on. */
+.skeleton-shimmer {
+  position: relative;
+  overflow: hidden;
+  background: var(--color-surface);
+  border-radius: 14px;
+}
+.skeleton-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(200, 121, 65, 0.05) 50%,
+    transparent 100%
+  );
+  animation: skeleton-sweep 1.2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-shimmer::after {
+    animation: none;
+  }
+}
+@keyframes skeleton-sweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
 }
 
 @keyframes ambient-pulse {

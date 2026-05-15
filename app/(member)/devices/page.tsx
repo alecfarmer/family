@@ -1,30 +1,17 @@
 import { requireUser } from "@/lib/auth";
 import { getActiveHouseholdScope } from "@/lib/activeHousehold";
+import { getAllHouseholds, getUserHouseholds } from "@/lib/household";
 import { DevicesGrid, type DeviceRow } from "@/components/devices/DevicesGrid";
 
 export default async function DevicesPage() {
   const { profile, sb } = await requireUser();
   const isAdmin = profile.role === "admin";
-  const scope = await getActiveHouseholdScope();
 
-  const [devicesRes, membershipsRes] = await Promise.all([
+  const [devicesRes, households, scope] = await Promise.all([
     sb.from("devices").select("*").order("name"),
-    sb.from("household_members").select("household_id").eq("user_id", profile.id),
+    isAdmin ? getAllHouseholds() : getUserHouseholds(profile.id),
+    getActiveHouseholdScope(),
   ]);
-
-  const membershipIds = (membershipsRes.data ?? []).map((m) => m.household_id);
-
-  const householdsRes = isAdmin
-    ? await sb.from("households").select("id, name").order("name")
-    : membershipIds.length
-      ? await sb
-          .from("households")
-          .select("id, name")
-          .in("id", membershipIds)
-          .order("name")
-      : { data: [] };
-
-  const households = householdsRes.data ?? [];
   const householdNameById = new Map(households.map((h) => [h.id, h.name]));
 
   const allDevices: DeviceRow[] = (devicesRes.data ?? []).map((d) => ({
