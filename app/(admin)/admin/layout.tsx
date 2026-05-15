@@ -12,7 +12,15 @@ export default async function AdminLayout({ children }: { children: ReactNode })
     <div className="flex min-h-dvh flex-col bg-bg">
       <AppHeader initial={initial} admin={true} />
       <AdminNav />
-      <main className="flex flex-1 flex-col overflow-auto">{children}</main>
+      {/* Admin pages don't have a BottomNav, so the scrollable main itself
+          honors safe-area-inset-bottom — otherwise the last row could hide
+          behind the iPhone home indicator on a tall list. */}
+      <main
+        className="flex flex-1 flex-col overflow-auto"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
+        {children}
+      </main>
     </div>
   );
 }

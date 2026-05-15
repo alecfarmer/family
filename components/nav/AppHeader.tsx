@@ -20,8 +20,16 @@ export function AppHeader({
   homeLink = true,
   adminLink = true,
 }: AppHeaderProps) {
+  // Top padding honors safe-area-inset-top so the header clears the iPhone
+  // status bar + Dynamic Island on phones that have one (~59 px) and shrinks
+  // gracefully on phones without (~20 px on iPhone SE / most Android).
   return (
-    <div className="flex items-center justify-between border-b border-border bg-bg pt-[60px] pb-3.5 pl-5 pr-4">
+    <div
+      className="flex items-center justify-between border-b border-border bg-bg pb-3.5 pl-5 pr-4"
+      style={{
+        paddingTop: "calc(env(safe-area-inset-top) + 12px)",
+      }}
+    >
       <div className="flex items-center gap-2.5">
         {homeLink ? (
           <Link

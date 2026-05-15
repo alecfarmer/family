@@ -27,10 +27,13 @@ export function ChatInput({
     }
   }
 
+  // The BottomNav below already pads for safe-area-inset-bottom, so the
+  // chat input only needs modest internal padding — otherwise we'd double
+  // the home-indicator clearance on iPhones.
   return (
     <div
       className={cn(
-        "flex items-end gap-2 border-t border-border px-3.5 pb-7 pt-2.5",
+        "flex items-end gap-2 border-t border-border px-3.5 pb-3 pt-2.5",
         className,
       )}
       style={{

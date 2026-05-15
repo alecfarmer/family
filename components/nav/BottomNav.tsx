@@ -72,8 +72,17 @@ function isActive(pathname: string, href: string) {
 export function BottomNav() {
   const pathname = usePathname();
 
+  // pb honors the iPhone home-indicator safe area on phones that have one
+  // (≈34 px on iPhone 15+ with Dynamic Island) and falls back to 12 px on
+  // phones without (iPhone SE, Android). The nav background extends all the
+  // way to the bottom of the screen — no dark gap underneath the labels.
   return (
-    <nav className="flex justify-around border-t border-border bg-bg/90 px-2 pt-2.5 pb-7 backdrop-blur-2xl">
+    <nav
+      className="flex justify-around border-t border-border bg-bg/90 px-2 pt-2.5 backdrop-blur-2xl"
+      style={{
+        paddingBottom: "max(env(safe-area-inset-bottom), 12px)",
+      }}
+    >
       {ITEMS.map((it) => {
         const active = isActive(pathname, it.href);
         const color = active ? "var(--color-accent)" : "var(--color-text-3)";
