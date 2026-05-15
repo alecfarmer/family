@@ -1,26 +1,83 @@
 @import "tailwindcss";
 
+@theme {
+  /* Warm-dark palette from design handoff */
+  --color-bg: #0F0D0B;
+  --color-surface: #1A1714;
+  --color-surface-elevated: #231F1B;
+  --color-border: #2E2925;
+  --color-border-strong: #3D3830;
+
+  --color-accent: #C87941;
+  --color-accent-light: #E8A063;
+
+  --color-text: #F0EAE2;
+  --color-text-2: #9E9188;
+  --color-text-3: #6B6059;
+
+  --color-success: #5C8F6A;
+  --color-warning: #B8832A;
+  --color-destructive: #8F4A4A;
+
+  --color-chat-user: #1E2D1F;
+  --color-chat-user-border: #2A3F2C;
+  --color-chat-assistant: #1A1714;
+
+  --color-tone-chat: #7B9EC8;
+  --color-tone-admin: #9D7BC8;
+
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+
+  --font-display: var(--font-display);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
+  /* Aliases used by shadcn-style utilities */
+  --color-background: var(--color-bg);
+  --color-foreground: var(--color-text);
+  --color-primary: var(--color-accent);
+  --color-primary-foreground: var(--color-bg);
+  --color-muted: var(--color-surface);
+  --color-muted-foreground: var(--color-text-2);
+  --color-ring: var(--color-accent);
+}
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --glow-accent: 0 0 24px rgba(200, 121, 65, 0.15);
+  --shadow-card: 0 2px 16px rgba(0, 0, 0, 0.4);
+  --shadow-elevated: 0 8px 32px rgba(0, 0, 0, 0.6);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+html,
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+}
+
+::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+input,
+button,
+textarea,
+select {
+  font-family: inherit;
+}
+
+@keyframes ambient-pulse {
+  0%,
+  100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
 }
