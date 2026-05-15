@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "crypto:test": "tsx --env-file=.env.local scripts/encrypt-test.ts",
+    "vapid:generate": "node scripts/generate-vapid.mjs",
+    "icons:generate": "node scripts/generate-icons.mjs"
   },
   "dependencies": {
     "@ai-sdk/react": "^3.0.184",

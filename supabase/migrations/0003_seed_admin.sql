@@ -1,0 +1,37 @@
+-- 0003_seed_admin.sql
+-- Documentation-only migration. No auto-running SQL: we cannot hardcode the
+-- auth user ID before James completes his first magic-link login.
+--
+-- ---------------------------------------------------------------------------
+-- How to bootstrap the first admin
+-- ---------------------------------------------------------------------------
+--
+-- 1. Deploy the app to a domain James can reach (e.g. family.alecfarmer.com).
+-- 2. James opens the app and signs in via the magic-link flow. This creates a
+--    row in `auth.users`.
+-- 3. The app's auth callback (Phase 3) inserts a matching row into
+--    `public.users` with `role = 'member'`.
+-- 4. To promote that row to admin, open the Supabase SQL editor and run:
+--
+--      update public.users
+--      set role = 'admin'
+--      where id = (
+--        select id from auth.users where email = 'realalecfarmer@gmail.com'
+--      );
+--
+--    (Replace the email with whichever address James used to sign in.)
+--
+-- 5. If for some reason the `public.users` row does not yet exist (e.g. the
+--    auth callback didn't run), you can insert it directly:
+--
+--      insert into public.users (id, full_name, role)
+--      select id, 'James Farmer', 'admin'
+--      from auth.users
+--      where email = 'realalecfarmer@gmail.com'
+--      on conflict (id) do update set role = 'admin';
+--
+-- Repeat the same procedure for any additional admin (Alec Farmer, etc.) by
+-- swapping the email address.
+--
+-- This file deliberately contains no executable statements so that running
+-- `supabase db push` on a fresh project is safe and idempotent.
