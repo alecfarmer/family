@@ -16,6 +16,9 @@ const schema = z.object({
   // Direct Anthropic API key — used by @ai-sdk/anthropic in /api/chat.
   // Marked optional so non-chat features still boot when it's unset.
   ANTHROPIC_API_KEY: z.string().optional(),
+  // Groq API key — used by /api/transcribe for Whisper speech-to-text.
+  // Optional so the app boots without it; the route returns 503 when unset.
+  GROQ_API_KEY: z.string().optional(),
   // Shared secret for Vercel cron triggers. Optional in dev; required in
   // production so an attacker can't fire renegotiation pushes.
   CRON_SECRET: z.string().optional(),
@@ -40,6 +43,7 @@ function read(): Env {
     VAPID_EMAIL: process.env.VAPID_EMAIL,
     AI_GATEWAY_API_KEY: process.env.AI_GATEWAY_API_KEY,
     ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+    GROQ_API_KEY: process.env.GROQ_API_KEY,
     CRON_SECRET: process.env.CRON_SECRET,
     ADMIN_DISPLAY_NAME: process.env.ADMIN_DISPLAY_NAME,
     NEXT_PUBLIC_VAPID_PUBLIC_KEY: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,

@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/components/ui/cn";
+import { MicButton } from "@/components/chat/MicButton";
 
 export type ChatInputProps = {
   value: string;
@@ -27,6 +28,12 @@ export function ChatInput({
     }
   }
 
+  function handleTranscribed(text: string) {
+    onChange(text);
+    // Defer one tick so the input state is flushed before we submit
+    setTimeout(onSend, 0);
+  }
+
   // The BottomNav below already pads for safe-area-inset-bottom, so the
   // chat input only needs modest internal padding — otherwise we'd double
   // the home-indicator clearance on iPhones.
@@ -41,6 +48,11 @@ export function ChatInput({
         backdropFilter: "blur(20px)",
       }}
     >
+      <MicButton
+        onTranscribed={handleTranscribed}
+        disabled={disabled}
+      />
+
       <input
         type="text"
         value={value}

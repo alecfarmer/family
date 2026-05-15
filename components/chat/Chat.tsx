@@ -229,8 +229,15 @@ export function Chat() {
 
             if (segments.length === 0) return null;
 
+            // Collect only plain text segments for TTS — skip cards
+            const ttsText = segments
+              .filter((s): s is { kind: "text"; text: string } => s.kind === "text")
+              .map((s) => s.text)
+              .join(" ")
+              .trim();
+
             return (
-              <AssistantBubble key={message.id}>
+              <AssistantBubble key={message.id} plainText={ttsText || undefined}>
                 {segments.map((seg, i) => {
                   if (seg.kind === "text") {
                     return (

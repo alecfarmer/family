@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { cn } from "@/components/ui/cn";
+import { SpeakButton } from "@/components/chat/SpeakButton";
 
 export type UserBubbleProps = {
   children: ReactNode;
@@ -34,11 +35,13 @@ export function UserBubble({ children, ts, className }: UserBubbleProps) {
 
 export type AssistantBubbleProps = {
   children: ReactNode;
+  /** Plain text to read aloud. When omitted the speak button is hidden. */
+  plainText?: string;
   ts?: string;
   className?: string;
 };
 
-export function AssistantBubble({ children, ts, className }: AssistantBubbleProps) {
+export function AssistantBubble({ children, plainText, ts, className }: AssistantBubbleProps) {
   return (
     <div
       className={cn(
@@ -46,9 +49,12 @@ export function AssistantBubble({ children, ts, className }: AssistantBubbleProp
         className,
       )}
     >
-      <span className="mb-1 ml-1 font-display text-[12.5px] font-semibold uppercase tracking-[0.14em] text-accent">
-        FAMILY
-      </span>
+      <div className="mb-1 ml-1 flex items-center gap-1.5">
+        <span className="font-display text-[12.5px] font-semibold uppercase tracking-[0.14em] text-accent">
+          FAMILY
+        </span>
+        {plainText && <SpeakButton text={plainText} />}
+      </div>
       <div
         className="whitespace-pre-wrap break-words border border-border bg-surface px-3.5 py-3 text-[14.5px] leading-[1.45] text-text"
         style={{ borderRadius: "18px 18px 18px 4px" }}
